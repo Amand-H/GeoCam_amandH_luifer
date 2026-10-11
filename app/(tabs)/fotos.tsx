@@ -7,6 +7,7 @@ import { Chip } from '@/components/Chip';
 import { PhotoImage } from '@/components/PhotoImage';
 import { colors } from '@/constants/theme';
 import { useAlbums } from '@/hooks/useAlbums';
+import { useDevTools } from '@/hooks/useDevTools';
 import { usePhotos } from '@/hooks/usePhotos';
 import type { Album, AlbumFilter, GeoPhoto } from '@/types/geo';
 
@@ -27,6 +28,7 @@ export default function FotosScreen() {
 
   const { photos } = usePhotos({ search, albumId: albumFilter, onlyFavorites });
   const { albums, createAlbum, renameAlbum, removeAlbum } = useAlbums();
+  const devTools = useDevTools();
 
   const confirmRemoveAlbum = (album: Album) => {
     Alert.alert(`¿Eliminar "${album.name}"?`, 'Las fotos quedarán sin álbum, no se borran.', [
@@ -84,7 +86,15 @@ export default function FotosScreen() {
 
   return (
     <View style={[styles.fill, { paddingTop: insets.top + 12 }]}>
-      <Text style={styles.title}>Fotos</Text>
+      <View style={styles.header}>
+        <Text style={styles.title}>Fotos</Text>
+        {/* Herramientas de rendimiento: solo existen en desarrollo */}
+        {__DEV__ && (
+          <Pressable onPress={devTools.openMenu} style={styles.devButton} hitSlop={8}>
+            <Text style={styles.devText}>⚙️ Dev</Text>
+          </Pressable>
+        )}
+      </View>
       <TextInput
         value={search}
         onChangeText={setSearch}
@@ -150,7 +160,22 @@ export default function FotosScreen() {
 
 const styles = StyleSheet.create({
   fill: { flex: 1, backgroundColor: colors.background },
-  title: { color: colors.text, fontSize: 28, fontWeight: '800', paddingHorizontal: 16, marginBottom: 12 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  title: { color: colors.text, fontSize: 28, fontWeight: '800' },
+  devButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  devText: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
   search: {
     marginHorizontal: 16,
     color: colors.text,

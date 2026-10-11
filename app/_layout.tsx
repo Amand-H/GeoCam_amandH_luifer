@@ -14,6 +14,8 @@ export default function RootLayout() {
     return (
       <View style={styles.center}>
         <Text style={styles.error}>Error al preparar la base de datos: {error.message}</Text>
+        {/* Drizzle envuelve el error real de SQLite en error.cause */}
+        {error.cause instanceof Error && <Text style={styles.cause}>{error.cause.message}</Text>}
         <StatusBar style="light" />
       </View>
     );
@@ -45,4 +47,5 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   error: { color: colors.danger, textAlign: 'center' },
+  cause: { color: colors.textMuted, textAlign: 'center', fontSize: 12, marginTop: 8 },
 });

@@ -71,17 +71,19 @@ Pantalla (app/)  →  Hook (hooks/)  →  Repositorio (db/repositories/)  →  D
 
 ```
 db/
-  client.ts                 → conexión + PRAGMA + instancia de Drizzle
+  client.ts                 → conexión + PRAGMA (WAL, foreign_keys) + instancia de Drizzle
   schema.ts                 → tablas albums y photos, tipos inferidos
   repositories/photos.ts    → listQuery, withLocationQuery, filteredQuery, detailQuery, create, update, remove…
   repositories/albums.ts    → listQuery, create, rename, remove (transacción)
+  devSeed.ts                → solo desarrollo: datos de prueba y medición (reto)
 drizzle/                    → migraciones generadas por drizzle-kit (versionadas, NO se editan)
-  0000_*.sql, 0001_*.sql, meta/, migrations.js
+  0000_*.sql, 0001_*.sql, 0002_*.sql, meta/, migrations.js
 hooks/
   usePhotos.ts              → lista filtrada + fotos con ubicación + addPhoto/removePhoto/clearAll
   usePhoto.ts               → detalle reactivo + updateNote/toggleFavorite/moveToAlbum/remove
   useAlbums.ts              → álbumes + createAlbum/renameAlbum/removeAlbum
   useAlbumsVersion.ts       → refresca las consultas de fotos (que hacen join) al cambiar albums
+  useDevTools.ts            → menú ⚙️ Dev de la pestaña Fotos (solo __DEV__)
 services/
   photoFiles.ts             → persistPhoto / deletePhotoFile (API File, Directory, Paths)
 ```
@@ -104,10 +106,42 @@ npm run db:generate          # = npx drizzle-kit generate
 | --- | --- |
 | `0000_nostalgic_blonde_phantom.sql` | Crea la tabla `photos` (uri, coordenadas `real`, origen, fecha). |
 | `0001_daily_inertia.sql` | Crea `albums` (con índice único en `name`) y agrega `album_id`, `note` y `favorite` a `photos` con `ALTER TABLE … ADD`, por lo que las fotos existentes se conservan (`favorite = false`, el resto `NULL`). |
+| `0002_modern_dagger.sql` | Reto: `CREATE INDEX photos_created_at_idx ON photos (created_at)` para la lista ordenada por fecha. |
 
 > **Nota:** `drizzle-kit` generó `album_id … REFERENCES albums(id)` **sin** `ON DELETE SET NULL` (la cláusula
 > solo quedó en el snapshot). Por eso `albumsRepo.remove` desvincula las fotos y borra el álbum dentro de una
 > transacción; así funciona igual en la base real. Detalles en el [AI-LOG](AI-LOG.md).
+
+### Reto: índice en `created_at` y medición
+
+En desarrollo, la pestaña **Fotos** muestra un botón **⚙️ Dev** (`hooks/useDevTools.ts` → `db/devSeed.ts`) con tres
+acciones: insertar 1000 fotos ficticias (en lotes de 100 dentro de una transacción, coordenadas aleatorias cerca de
+Riohacha), medir la lista (`console.time('listar 1000 fotos')` sobre `photosRepo.listQuery()`, promedio de 5
+consultas) y borrar los datos de prueba.
+
+| Medición (Android, Expo Go, 1003 filas) | Promedio de 5 consultas |
+| --- | --- |
+| Sin índice (migraciones `0000` + `0001`) | **118.8 ms** |
+| Con índice (`0002`) | **105.5 ms** |
+
+`EXPLAIN QUERY PLAN` de la consulta de la lista (`LEFT JOIN albums … ORDER BY created_at DESC`):
+
+```
+Sin índice:  SCAN photos
+             SEARCH albums USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
+             USE TEMP B-TREE FOR ORDER BY          ← ordena todas las filas en memoria
+Con índice:  SCAN photos USING INDEX photos_created_at_idx
+             SEARCH albums USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
+```
+
+**Interpretación:** el índice elimina el ordenamiento en memoria, pero con 1000 filas la mejora medida es pequeña
+(~11 %). La mayor parte del tiempo es pasar las filas de SQLite a JavaScript, y entre las dos mediciones también se
+activó el modo WAL y se reinició Expo Go, así que no toda la diferencia es del índice. La ventaja del índice crece con
+el número de filas y es mayor cuando se usa `LIMIT` (paginación), porque SQLite puede detenerse sin leer toda la tabla.
+
+> **Modo WAL:** `db/client.ts` ejecuta `PRAGMA journal_mode = WAL`. Al aplicar la `0002` en el teléfono apareció
+> `database is locked`: conexiones de recargas anteriores de Expo Go con lecturas a medias bloqueaban el `COMMIT`.
+> En WAL los lectores no bloquean a quien escribe. Ver el [AI-LOG](AI-LOG.md).
 
 ## Funcionalidades (Semana 6)
 

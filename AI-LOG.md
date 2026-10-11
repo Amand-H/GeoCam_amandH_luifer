@@ -29,7 +29,8 @@
     `db/repositories/photos.ts` y `db/repositories/albums.ts`.
   - Hooks `usePhotos`, `usePhoto`, `useAlbums` (los únicos que usan `useLiveQuery`) y `services/photoFiles.ts`.
   - Pestaña `app/(tabs)/fotos.tsx`, detalle `app/foto/[id].tsx` y componentes `Chip`, `PhotoImage`, `AlbumNameModal`.
-  - Las 2 migraciones de `drizzle/` se generaron con `npx drizzle-kit generate`; ninguna se editó a mano.
+  - Las 3 migraciones de `drizzle/` se generaron con `npx drizzle-kit generate`; ninguna se editó a mano.
+  - Reto: índice `photos_created_at_idx` (migración `0002`), `db/devSeed.ts` y `hooks/useDevTools.ts`.
 - **¿Qué se modificó o se decidió distinto respecto al código base de la guía?:**
   - **Mapeo a tipo de dominio:** las pantallas no usan el tipo de Drizzle. `toGeoPhoto()` convierte la fila plana
     (`latitude`, `longitude`, `accuracy`, `created_at` como `Date`) en `GeoPhoto` con `coords` anidadas o `null`
@@ -81,6 +82,27 @@
 - **Commit intermedio sin compilar:** el commit de la fase 3 (`427bdfe`) cambió `GeoPhoto.id` a `number` antes
   de adaptar las pantallas, así que ese commit tiene errores de `tsc` en `mapa.tsx` y en el Context. Se
   corrigieron en el commit siguiente (`fc896fe`) y se dejó anotado en el mensaje del commit.
+- **`database is locked` al aplicar la tercera migración (reto).** Con las 1000 fotos de prueba cargadas, al
+  recargar la app la migración `0002` falló con `Failed to run the query 'COMMIT'`. El migrador de Drizzle hace
+  `ROLLBACK`, así que no se perdieron datos. El primer diagnóstico de la IA (una segunda conexión abierta por
+  Fast Refresh) era incompleto: cerrar la app desde recientes no lo resolvió. Para ver la causa se agregó
+  `error.cause` a la pantalla de error de `app/_layout.tsx`, que mostró `database is locked`. Leyendo
+  `drizzle-orm/expo-sqlite/session.js` se vio que el driver prepara las sentencias con `prepareSync` y nunca
+  las finaliza; las conexiones de recargas anteriores de Expo Go (el proceso no muere al recargar) quedaban con
+  una lectura a medias y un bloqueo `SHARED`, y en el modo de journal por defecto el `COMMIT` necesita que no
+  haya lectores. Se reprodujo con `node:sqlite` (modo `delete` → `database is locked`; modo `wal` → `COMMIT OK`)
+  y se corrigió con `PRAGMA journal_mode = WAL` en `db/client.ts` (el mismo ejemplo de la doc de expo-sqlite).
+  Activar WAL también requiere que no haya lectores colgados, así que hubo que **forzar la detención** de
+  Expo Go una vez desde Ajustes. Después la `0002` se aplicó sin errores.
+- **Long press sobre un `Text`:** el primer menú de desarrollo se abría manteniendo presionado el título
+  "Fotos" (`Text.onLongPress`); en el teléfono no respondió. Se cambió por un botón visible **⚙️ Dev** (solo
+  en `__DEV__`).
+- **Medición del índice con variables mezcladas:** entre la medición sin índice (118.8 ms) y con índice
+  (105.5 ms) también cambiaron el modo WAL y el reinicio de Expo Go, así que la diferencia no se atribuye solo
+  al índice. Como evidencia directa se usó `EXPLAIN QUERY PLAN`: con el índice desaparece
+  `USE TEMP B-TREE FOR ORDER BY`.
+- **`Alert` con 4 botones:** en Android un `Alert` muestra como máximo 3 botones; el menú de desarrollo
+  muestra "Cerrar" solo en iOS y usa `cancelable: true` en Android.
 - **Errores típicos de la tabla de la guía:** en esta sesión no se generó ninguno (`openDatabase`/`executeSql`,
   `better-sqlite3`, `drizzle-kit push`, falta de `driver: 'expo'`, `enableChangeListener` o `PRAGMA`, mezcla de
   APIs de archivos), porque las instrucciones los prevenían explícitamente. Se verificó con `grep` sobre el código.
@@ -96,3 +118,4 @@
   - Fase 5: tras aplicar la migración `0001` en el mismo teléfono, las fotos anteriores siguieron ahí.
   - Fases 6–8: álbumes (crear, duplicado, renombrar, eliminar dejando las fotos sin álbum), nota, favorita,
     búsqueda y filtros; la foto nueva se ve tras reabrir la app y al eliminarla se borra su archivo.
+  - Fase 10 (Android): 1003 filas → 118.8 ms sin índice y 105.5 ms con índice (promedio de 5 consultas).
