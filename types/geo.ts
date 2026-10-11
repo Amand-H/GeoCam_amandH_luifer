@@ -12,10 +12,11 @@ export interface Coords {
   timestamp: number;
 }
 
+/** Tipo de dominio que usan las pantallas: no depende de Drizzle. */
 export interface GeoPhoto {
-  id: string;
+  id: number;
   uri: string;
   coords: Coords | null; // null si el usuario negó la ubicación
   source: 'camera' | 'gallery';
-  createdAt: number;
+  createdAt: number; // ms
 }
