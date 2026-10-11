@@ -1,20 +1,121 @@
 # GeoCam 📷📍
 
-Cámara que etiqueta cada foto con coordenadas GPS y reacciona al movimiento del teléfono.
-Taller Integrador 2 · **Semana 6: Módulos Nativos y Sensores del Dispositivo**.
+Cámara que etiqueta cada foto con coordenadas GPS, reacciona al movimiento del teléfono y guarda
+todo en una base de datos local para funcionar sin conexión.
+Taller Integrador 2 · **Semana 6: Módulos Nativos y Sensores** · **Semana 7: Persistencia con Drizzle ORM + SQLite**.
 
 **Integrantes:** Luis Nuñez, Amand Herrera
 
 Construida con **Expo SDK 57**, Expo Router y TypeScript estricto. Todo el acceso al hardware
 está encapsulado en Custom Hooks tipados (sin `any`) que exponen los errores como estado para la UI.
 
-## Funcionalidades
+## Semana 7 – Persistencia offline-first
+
+Las fotos ya no viven en memoria: se guardan en SQLite (`geocam.db`) con **Drizzle ORM** y sus archivos se
+copian a la carpeta de documentos de la app. Al cerrar y reabrir Expo Go, o en modo avión, todo sigue ahí.
+
+![Flujo CRUD](docs/screenshots/flujo-semana7.gif)
+
+### Funcionalidades nuevas
+
+| Requisito | Implementación |
+| --- | --- |
+| Persistencia de fotos | `db/schema.ts` + `db/repositories/photos.ts` + `hooks/usePhotos.ts` (`useLiveQuery`) |
+| C1. Álbumes | Tabla `albums`; crear, renombrar y eliminar desde la pestaña **Fotos** (mantener presionado un álbum) |
+| C2. Segunda migración | `drizzle/0001_*.sql`: tabla `albums` + columnas `album_id`, `note`, `favorite`, sin perder fotos |
+| C3. CRUD completo | `app/foto/[id].tsx`: nota, favorita, mover de álbum y eliminar |
+| C4. Búsqueda y filtros reactivos | Pestaña **Fotos**: búsqueda por nota, chips de álbum / "Sin álbum" / ★ Favoritas |
+| C5. Archivos permanentes | `services/photoFiles.ts`: copia a `Paths.document/photos`; el archivo se borra con su registro |
+
+### Diagrama de tablas
+
+```mermaid
+erDiagram
+    ALBUMS ||--o{ PHOTOS : "contiene"
+    ALBUMS {
+        integer id PK "autoincrement"
+        text name "NOT NULL, UNIQUE"
+        integer created_at "timestamp_ms, NOT NULL"
+    }
+    PHOTOS {
+        integer id PK "autoincrement"
+        text uri "NOT NULL"
+        real latitude "nullable"
+        real longitude "nullable"
+        real accuracy "nullable"
+        text source "camera | gallery, NOT NULL"
+        integer created_at "timestamp_ms, NOT NULL"
+        integer album_id FK "nullable -> albums.id"
+        text note "nullable"
+        integer favorite "boolean, NOT NULL, default false"
+    }
+```
+
+Una foto pertenece como máximo a un álbum. Si se elimina un álbum, sus fotos quedan **sin álbum** (no se borran).
+
+### Arquitectura por capas
+
+```
+Pantalla (app/)  →  Hook (hooks/)  →  Repositorio (db/repositories/)  →  Drizzle + esquema (db/)  →  expo-sqlite
+                         └→ Servicio de archivos (services/photoFiles.ts) → expo-file-system
+```
+
+- **Ninguna pantalla ni componente importa `drizzle-orm` ni `@/db`.** La única excepción es `app/_layout.tsx`,
+  que ejecuta `useMigrations` y muestra un indicador de carga hasta que la base está lista.
+- Los **repositorios** devuelven las consultas de lectura **sin ejecutar**; los **hooks** las ejecutan con
+  `useLiveQuery`, que vuelve a consultar cuando cambia la tabla (requiere `enableChangeListener: true`).
+- Los hooks convierten las filas planas al tipo de dominio `GeoPhoto` (`types/geo.ts`), así que las pantallas
+  no dependen de Drizzle.
+- `db/client.ts` abre la base con `openDatabaseSync('geocam.db', { enableChangeListener: true })` y ejecuta
+  `PRAGMA foreign_keys = ON`, porque SQLite no aplica llaves foráneas si no se activa en cada conexión.
+
+```
+db/
+  client.ts                 → conexión + PRAGMA + instancia de Drizzle
+  schema.ts                 → tablas albums y photos, tipos inferidos
+  repositories/photos.ts    → listQuery, withLocationQuery, filteredQuery, detailQuery, create, update, remove…
+  repositories/albums.ts    → listQuery, create, rename, remove (transacción)
+drizzle/                    → migraciones generadas por drizzle-kit (versionadas, NO se editan)
+  0000_*.sql, 0001_*.sql, meta/, migrations.js
+hooks/
+  usePhotos.ts              → lista filtrada + fotos con ubicación + addPhoto/removePhoto/clearAll
+  usePhoto.ts               → detalle reactivo + updateNote/toggleFavorite/moveToAlbum/remove
+  useAlbums.ts              → álbumes + createAlbum/renameAlbum/removeAlbum
+  useAlbumsVersion.ts       → refresca las consultas de fotos (que hacen join) al cambiar albums
+services/
+  photoFiles.ts             → persistPhoto / deletePhotoFile (API File, Directory, Paths)
+```
+
+### Migraciones
+
+Las migraciones **se generan, nunca se escriben ni se editan a mano**:
+
+```bash
+# 1. Modifica db/schema.ts
+# 2. Genera el SQL en drizzle/ (también actualiza drizzle/migrations.js)
+npm run db:generate          # = npx drizzle-kit generate
+# 3. Recarga la app: useMigrations aplica las pendientes al iniciar
+```
+
+> ⚠️ **No uses `npx drizzle-kit push`.** `push` modifica una base directamente sin dejar historial; en la app
+> las migraciones se aplican en el teléfono a partir de los archivos versionados en `drizzle/`.
+
+| Migración | Qué hace |
+| --- | --- |
+| `0000_nostalgic_blonde_phantom.sql` | Crea la tabla `photos` (uri, coordenadas `real`, origen, fecha). |
+| `0001_daily_inertia.sql` | Crea `albums` (con índice único en `name`) y agrega `album_id`, `note` y `favorite` a `photos` con `ALTER TABLE … ADD`, por lo que las fotos existentes se conservan (`favorite = false`, el resto `NULL`). |
+
+> **Nota:** `drizzle-kit` generó `album_id … REFERENCES albums(id)` **sin** `ON DELETE SET NULL` (la cláusula
+> solo quedó en el snapshot). Por eso `albumsRepo.remove` desvincula las fotos y borra el álbum dentro de una
+> transacción; así funciona igual en la base real. Detalles en el [AI-LOG](AI-LOG.md).
+
+## Funcionalidades (Semana 6)
 
 | Requisito | Implementación |
 | --- | --- |
 | Cámara con permisos | `hooks/useCamera.ts` + `components/PermissionPrimer.tsx` |
 | Ubicación con permisos y seguimiento | `hooks/useGeoLocation.ts` |
-| R1. Estado global de fotos | `context/GeoPhotosContext.tsx` (`addPhoto`, `removePhoto`, `clearAll`, inmutable) |
+| R1. Estado global de fotos | Semana 6: `GeoPhotosContext` en memoria → Semana 7: `hooks/usePhotos.ts` sobre SQLite |
 | R2. Importar desde galería | `lib/photos.ts` → `launchImageLibraryAsync({ mediaTypes: ['images'] })`, `source: 'gallery'` (borde morado) |
 | R3. Pestaña Mapa | `app/(tabs)/mapa.tsx`: un `Marker` por foto, miniatura al tocar, lista "Sin ubicación" |
 | R4. Agitar para borrar | `hooks/useShake.ts` → `Alert` de confirmación |
@@ -23,18 +124,24 @@ está encapsulado en Custom Hooks tipados (sin `any`) que exponen los errores co
 ## Estructura
 
 ```
-app/_layout.tsx
+app/_layout.tsx             → aplica migraciones (useMigrations) antes de montar el Stack
 app/index.tsx               → redirige a /geocam
-app/(tabs)/_layout.tsx      → Tabs + GeoPhotosProvider
+app/(tabs)/_layout.tsx      → Tabs
 app/(tabs)/geocam.tsx
 app/(tabs)/mapa.tsx
+app/(tabs)/fotos.tsx        → búsqueda, filtros y álbumes (Semana 7)
+app/foto/[id].tsx           → detalle y edición de una foto (Semana 7)
+components/AlbumNameModal.tsx
+components/Chip.tsx
+components/PhotoImage.tsx   → imagen con placeholder si el archivo ya no existe
 components/PermissionPrimer.tsx
 components/StatusBanner.tsx
 constants/theme.ts
-context/GeoPhotosContext.tsx
+db/, drizzle/, services/    → ver "Arquitectura por capas"
 hooks/useCamera.ts
 hooks/useGeoLocation.ts
 hooks/useShake.ts
+hooks/usePhotos.ts, usePhoto.ts, useAlbums.ts, useAlbumsVersion.ts
 lib/permissions.ts          → mapPermission(): respuesta de Expo → PermissionState
 lib/photos.ts
 types/geo.ts
@@ -113,6 +220,8 @@ Para instalar módulos nuevos usa siempre `npx expo install <paquete>` (no `npm 
 
 - En Expo Go se ven los textos de permiso genéricos de Expo Go; los de `app.json` solo aparecen en builds propios.
 - Solo se pide ubicación en **primer plano** (`requestForegroundPermissionsAsync`).
-- Escribir coordenadas en el EXIF requiere módulos fuera de Expo Go; por eso cada foto es un objeto
-  `GeoPhoto` en memoria (base del esquema SQLite de la Semana 7).
+- Escribir coordenadas en el EXIF requiere módulos fuera de Expo Go; por eso las coordenadas se guardan en
+  columnas `real` de la tabla `photos` (Semana 7).
+- Si la base queda inconsistente durante el desarrollo, **no borres migraciones**: borra los datos de Expo Go
+  en el teléfono. La historia de `drizzle/` no se reescribe.
 - En producción, `react-native-maps` en Android necesita una API key de Google Maps.

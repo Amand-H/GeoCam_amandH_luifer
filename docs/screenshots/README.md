@@ -10,3 +10,9 @@ Coloca aquí las capturas tomadas en tu teléfono con estos nombres exactos
 | `bloqueado.png` | Pantalla con el botón **"Abrir Ajustes"** |
 
 También puedes agregar un GIF (`demo.gif`) y enlazarlo en el README.
+
+## Semana 7
+
+| Archivo | Qué debe mostrar |
+| --- | --- |
+| `flujo-semana7.gif` | Flujo CRUD: tomar foto → abrirla en **Fotos** → escribir nota, marcar ★ y asignar álbum → buscar/filtrar → eliminar. Ya está enlazado en el `README.md` principal. |
