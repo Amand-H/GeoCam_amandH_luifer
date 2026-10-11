@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, type Region } from 'react-native-maps';
-import { useIsFocused } from 'expo-router';
+import { router, useIsFocused } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGeoLocation } from '@/hooks/useGeoLocation';
 import { useShake } from '@/hooks/useShake';
@@ -96,14 +96,21 @@ export default function MapaScreen() {
                 {selected.coords.latitude.toFixed(5)}, {selected.coords.longitude.toFixed(5)}
               </Text>
             )}
-            <Pressable
-              onPress={() => {
-                removePhoto(selected.id);
-                setSelectedId(null);
-              }}
-            >
-              <Text style={styles.delete}>Eliminar</Text>
-            </Pressable>
+            <View style={styles.previewActions}>
+              <Pressable
+                onPress={() => router.push({ pathname: '/foto/[id]', params: { id: String(selected.id) } })}
+              >
+                <Text style={styles.detail}>Ver detalle</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  removePhoto(selected.id);
+                  setSelectedId(null);
+                }}
+              >
+                <Text style={styles.delete}>Eliminar</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       )}
@@ -155,7 +162,9 @@ const styles = StyleSheet.create({
   previewInfo: { flex: 1, gap: 4 },
   previewTitle: { color: colors.text, fontWeight: '700' },
   mono: { color: '#6ee7b7', fontFamily: 'monospace', fontSize: 12 },
-  delete: { color: colors.danger, fontWeight: '600', marginTop: 4 },
+  previewActions: { flexDirection: 'row', gap: 16, marginTop: 4 },
+  detail: { color: colors.accent, fontWeight: '600' },
+  delete: { color: colors.danger, fontWeight: '600' },
   list: { padding: 12, gap: 8, backgroundColor: colors.background, minHeight: 120 },
   listTitle: { color: colors.text, fontWeight: '700' },
   muted: { color: colors.textMuted, fontSize: 12 },
