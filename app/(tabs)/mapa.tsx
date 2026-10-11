@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, type Region } from 'react-native-maps';
 import { router, useIsFocused } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGeoLocation } from '@/hooks/useGeoLocation';
 import { useShake } from '@/hooks/useShake';
+import { PhotoImage } from '@/components/PhotoImage';
 import { StatusBanner } from '@/components/StatusBanner';
 import { usePhotos } from '@/hooks/usePhotos';
 import { colors } from '@/constants/theme';
@@ -85,7 +86,7 @@ export default function MapaScreen() {
 
       {selected && (
         <View style={styles.preview}>
-          <Image source={{ uri: selected.uri }} style={styles.previewImage} />
+          <PhotoImage uri={selected.uri} style={styles.previewImage} />
           <View style={styles.previewInfo}>
             <Text style={styles.previewTitle}>
               {selected.source === 'gallery' ? '🖼️ Galería' : '📷 Cámara'}
@@ -127,8 +128,8 @@ export default function MapaScreen() {
             contentContainerStyle={{ gap: 8 }}
             renderItem={({ item }) => (
               <Pressable onPress={() => setSelectedId(item.id)}>
-                <Image
-                  source={{ uri: item.uri }}
+                <PhotoImage
+                  uri={item.uri}
                   style={[
                     styles.listThumb,
                     { borderColor: item.source === 'gallery' ? colors.gallery : colors.text },

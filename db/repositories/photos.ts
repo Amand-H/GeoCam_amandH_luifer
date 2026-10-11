@@ -40,6 +40,10 @@ export const photosRepo = {
     return selectWithAlbum().where(eq(photos.id, id)).limit(1);
   },
 
+  allUris() {
+    return db.select({ uri: photos.uri }).from(photos).all();
+  },
+
   findById(id: number) {
     return db.select().from(photos).where(eq(photos.id, id)).get();
   },

@@ -3,6 +3,7 @@ import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { photosRepo } from '@/db/repositories/photos';
 import type { Photo } from '@/db/schema';
 import { useAlbumsVersion } from '@/hooks/useAlbumsVersion';
+import { deletePhotoFile, persistPhoto } from '@/services/photoFiles';
 import type { Coords, GeoPhoto, PhotoFilters } from '@/types/geo';
 
 export interface NewPhotoInput {
@@ -33,9 +34,14 @@ export function toGeoPhoto(row: PhotoRow): GeoPhoto {
   };
 }
 
-/** Compartida con usePhoto para que borrar desde el detalle haga lo mismo que desde el mapa. */
+/**
+ * Compartida con usePhoto para que borrar desde el detalle haga lo mismo que desde el mapa:
+ * primero el registro y luego el archivo.
+ */
 export async function removePhotoById(id: number): Promise<void> {
+  const row = photosRepo.findById(id);
   await photosRepo.remove(id);
+  if (row) deletePhotoFile(row.uri);
 }
 
 export function usePhotos({ search = '', albumId = null, onlyFavorites = false }: PhotoFilters = {}) {
@@ -53,19 +59,28 @@ export function usePhotos({ search = '', albumId = null, onlyFavorites = false }
   const photosWithLocation = useMemo(() => located.data.map(toGeoPhoto), [located.data]);
 
   const addPhoto = useCallback(async ({ uri, source, coords }: NewPhotoInput) => {
-    await photosRepo.create({
-      uri,
-      source,
-      latitude: coords?.latitude ?? null,
-      longitude: coords?.longitude ?? null,
-      accuracy: coords?.accuracy ?? null,
-    });
+    const permanentUri = await persistPhoto(uri);
+    try {
+      await photosRepo.create({
+        uri: permanentUri,
+        source,
+        latitude: coords?.latitude ?? null,
+        longitude: coords?.longitude ?? null,
+        accuracy: coords?.accuracy ?? null,
+      });
+    } catch (e) {
+      // Sin registro el archivo quedaría huérfano
+      deletePhotoFile(permanentUri);
+      throw e;
+    }
   }, []);
 
   const removePhoto = useCallback((id: number) => removePhotoById(id), []);
 
   const clearAll = useCallback(async () => {
+    const uris = photosRepo.allUris();
     await photosRepo.clearAll();
+    uris.forEach(({ uri }) => deletePhotoFile(uri));
   }, []);
 
   return {

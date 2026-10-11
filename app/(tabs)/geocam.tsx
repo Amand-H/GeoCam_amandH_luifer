@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CameraView } from 'expo-camera';
 import { useIsFocused } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,6 +7,7 @@ import { useCamera } from '@/hooks/useCamera';
 import { useGeoLocation } from '@/hooks/useGeoLocation';
 import { useShake } from '@/hooks/useShake';
 import { PermissionPrimer } from '@/components/PermissionPrimer';
+import { PhotoImage } from '@/components/PhotoImage';
 import { StatusBanner } from '@/components/StatusBanner';
 import { usePhotos } from '@/hooks/usePhotos';
 import { colors } from '@/constants/theme';
@@ -42,16 +43,27 @@ export default function GeoCamScreen() {
     return geo.coords ?? (await geo.getCurrent());
   }, [geo]);
 
+  const savePhoto = useCallback(
+    async (uri: string, source: 'camera' | 'gallery') => {
+      try {
+        await addPhoto({ uri, source, coords: await resolveCoords() });
+      } catch (e) {
+        Alert.alert('No se pudo guardar la foto', e instanceof Error ? e.message : undefined);
+      }
+    },
+    [addPhoto, resolveCoords]
+  );
+
   const handleImport = useCallback(async () => {
     const uri = await pickImageFromGallery();
     if (!uri) return;
-    await addPhoto({ uri, source: 'gallery', coords: await resolveCoords() });
-  }, [addPhoto, resolveCoords]);
+    await savePhoto(uri, 'gallery');
+  }, [savePhoto]);
 
   const handleCapture = async () => {
     const photo = await takePhoto();
     if (!photo) return;
-    await addPhoto({ uri: photo.uri, source: 'camera', coords: await resolveCoords() });
+    await savePhoto(photo.uri, 'camera');
   };
 
   if (cameraPermission === 'checking') {
@@ -140,8 +152,8 @@ export default function GeoCamScreen() {
         <View style={styles.side}>
           {lastPhoto ? (
             <View>
-              <Image
-                source={{ uri: lastPhoto.uri }}
+              <PhotoImage
+                uri={lastPhoto.uri}
                 style={[
                   styles.thumb,
                   { borderColor: lastPhoto.source === 'gallery' ? colors.gallery : colors.text },
