@@ -1,7 +1,33 @@
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator';
+import { db } from '@/db/client';
+import migrations from '@/drizzle/migrations';
+import { colors } from '@/constants/theme';
 
 export default function RootLayout() {
+  // Única excepción a las capas: aplicar las migraciones antes de montar cualquier pantalla
+  const { success, error } = useMigrations(db, migrations);
+
+  if (error) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.error}>Error al preparar la base de datos: {error.message}</Text>
+        <StatusBar style="light" />
+      </View>
+    );
+  }
+
+  if (!success) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator color={colors.accent} size="large" />
+        <StatusBar style="light" />
+      </View>
+    );
+  }
+
   return (
     <>
       <Stack screenOptions={{ headerShown: false }} />
@@ -9,3 +35,14 @@ export default function RootLayout() {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    backgroundColor: colors.background,
+  },
+  error: { color: colors.danger, textAlign: 'center' },
+});
