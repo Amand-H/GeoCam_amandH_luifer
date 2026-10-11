@@ -19,4 +19,23 @@ export interface GeoPhoto {
   coords: Coords | null; // null si el usuario negó la ubicación
   source: 'camera' | 'gallery';
   createdAt: number; // ms
+  note: string | null;
+  favorite: boolean;
+  albumId: number | null;
+  albumName: string | null;
+}
+
+export interface Album {
+  id: number;
+  name: string;
+  createdAt: number; // ms
+}
+
+/** null = todos los álbumes, 'none' = solo fotos sin álbum. */
+export type AlbumFilter = number | 'none' | null;
+
+export interface PhotoFilters {
+  search?: string;
+  albumId?: AlbumFilter;
+  onlyFavorites?: boolean;
 }

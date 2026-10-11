@@ -2,7 +2,8 @@ import { useCallback, useMemo } from 'react';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { photosRepo } from '@/db/repositories/photos';
 import type { Photo } from '@/db/schema';
-import type { Coords, GeoPhoto } from '@/types/geo';
+import { useAlbumsVersion } from '@/hooks/useAlbumsVersion';
+import type { Coords, GeoPhoto, PhotoFilters } from '@/types/geo';
 
 export interface NewPhotoInput {
   uri: string;
@@ -10,21 +11,45 @@ export interface NewPhotoInput {
   coords: Coords | null;
 }
 
+type PhotoRow = Photo & { albumName: string | null };
+
 /** Fila plana de SQLite → objeto de dominio con coords anidadas. */
-function toGeoPhoto(row: Photo): GeoPhoto {
+export function toGeoPhoto(row: PhotoRow): GeoPhoto {
   const createdAt = row.createdAt.getTime();
   const coords: Coords | null =
     row.latitude !== null && row.longitude !== null
       ? { latitude: row.latitude, longitude: row.longitude, accuracy: row.accuracy, timestamp: createdAt }
       : null;
-  return { id: row.id, uri: row.uri, coords, source: row.source, createdAt };
+  return {
+    id: row.id,
+    uri: row.uri,
+    coords,
+    source: row.source,
+    createdAt,
+    note: row.note,
+    favorite: row.favorite,
+    albumId: row.albumId,
+    albumName: row.albumName,
+  };
 }
 
-export function usePhotos() {
-  const all = useLiveQuery(photosRepo.listQuery());
-  const located = useLiveQuery(photosRepo.withLocationQuery());
+/** Compartida con usePhoto para que borrar desde el detalle haga lo mismo que desde el mapa. */
+export async function removePhotoById(id: number): Promise<void> {
+  await photosRepo.remove(id);
+}
 
-  const photos = useMemo(() => all.data.map(toGeoPhoto), [all.data]);
+export function usePhotos({ search = '', albumId = null, onlyFavorites = false }: PhotoFilters = {}) {
+  const albumsVersion = useAlbumsVersion();
+  // Las dependencias hacen que la consulta se reconstruya al cambiar un filtro
+  const filtered = useLiveQuery(photosRepo.filteredQuery({ search, albumId, onlyFavorites }), [
+    search,
+    albumId,
+    onlyFavorites,
+    albumsVersion,
+  ]);
+  const located = useLiveQuery(photosRepo.withLocationQuery(), [albumsVersion]);
+
+  const photos = useMemo(() => filtered.data.map(toGeoPhoto), [filtered.data]);
   const photosWithLocation = useMemo(() => located.data.map(toGeoPhoto), [located.data]);
 
   const addPhoto = useCallback(async ({ uri, source, coords }: NewPhotoInput) => {
@@ -37,9 +62,7 @@ export function usePhotos() {
     });
   }, []);
 
-  const removePhoto = useCallback(async (id: number) => {
-    await photosRepo.remove(id);
-  }, []);
+  const removePhoto = useCallback((id: number) => removePhotoById(id), []);
 
   const clearAll = useCallback(async () => {
     await photosRepo.clearAll();
@@ -51,6 +74,6 @@ export function usePhotos() {
     addPhoto,
     removePhoto,
     clearAll,
-    error: all.error ?? located.error ?? null,
+    error: filtered.error ?? located.error ?? null,
   };
 }
