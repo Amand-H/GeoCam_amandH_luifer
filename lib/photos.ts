@@ -1,18 +1,5 @@
 import { Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import type { Coords, GeoPhoto } from '@/types/geo';
-
-let counter = 0;
-
-export function createGeoPhoto(
-  uri: string,
-  source: GeoPhoto['source'],
-  coords: Coords | null
-): GeoPhoto {
-  counter += 1;
-  const now = Date.now();
-  return { id: `${now}-${counter}`, uri, coords, source, createdAt: now };
-}
 
 /**
  * Abre el selector de la galería. El selector moderno del sistema no requiere

@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "expo-router/entry",
   "dependencies": {
+    "babel-preset-expo": "~57.0.0",
     "drizzle-orm": "^0.45.4",
     "expo": "~57.0.26",
     "expo-camera": "~57.0.6",

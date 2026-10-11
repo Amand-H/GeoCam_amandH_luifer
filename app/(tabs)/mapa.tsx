@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGeoLocation } from '@/hooks/useGeoLocation';
 import { useShake } from '@/hooks/useShake';
 import { StatusBanner } from '@/components/StatusBanner';
-import { useGeoPhotos } from '@/context/GeoPhotosContext';
+import { usePhotos } from '@/hooks/usePhotos';
 import { colors } from '@/constants/theme';
 import { confirmClearAll } from '@/lib/photos';
 import type { Coords, GeoPhoto } from '@/types/geo';
@@ -26,12 +26,13 @@ export default function MapaScreen() {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
   const geo = useGeoLocation({ watch: true, enabled: isFocused });
-  const { photos, removePhoto, clearAll } = useGeoPhotos();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const { photos, photosWithLocation, removePhoto, clearAll } = usePhotos();
+  const [selectedId, setSelectedId] = useState<number | null>(null);
 
   useShake(() => confirmClearAll(photos.length, clearAll), { enabled: isFocused });
 
-  const located = useMemo(() => photos.filter(hasCoords), [photos]);
+  // El filtro de ubicación lo hace SQLite; el type guard solo estrecha el tipo de coords
+  const located = useMemo(() => photosWithLocation.filter(hasCoords), [photosWithLocation]);
   const withoutLocation = useMemo(() => photos.filter((p) => p.coords === null), [photos]);
   const selected = photos.find((p) => p.id === selectedId) ?? null;
 
@@ -115,7 +116,7 @@ export default function MapaScreen() {
           <FlatList
             horizontal
             data={withoutLocation}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item) => String(item.id)}
             contentContainerStyle={{ gap: 8 }}
             renderItem={({ item }) => (
               <Pressable onPress={() => setSelectedId(item.id)}>

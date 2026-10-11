@@ -8,9 +8,9 @@ import { useGeoLocation } from '@/hooks/useGeoLocation';
 import { useShake } from '@/hooks/useShake';
 import { PermissionPrimer } from '@/components/PermissionPrimer';
 import { StatusBanner } from '@/components/StatusBanner';
-import { useGeoPhotos } from '@/context/GeoPhotosContext';
+import { usePhotos } from '@/hooks/usePhotos';
 import { colors } from '@/constants/theme';
-import { confirmClearAll, createGeoPhoto, pickImageFromGallery } from '@/lib/photos';
+import { confirmClearAll, pickImageFromGallery } from '@/lib/photos';
 import type { Coords, GeoPhoto } from '@/types/geo';
 
 export default function GeoCamScreen() {
@@ -32,7 +32,7 @@ export default function GeoCamScreen() {
   } = useCamera({ active: isFocused });
   // El GPS solo corre mientras esta pestaña tiene el foco
   const geo = useGeoLocation({ watch: true, enabled: isFocused });
-  const { photos, addPhoto, clearAll } = useGeoPhotos();
+  const { photos, addPhoto, clearAll } = usePhotos();
 
   useShake(() => confirmClearAll(photos.length, clearAll), { enabled: isFocused });
 
@@ -45,13 +45,13 @@ export default function GeoCamScreen() {
   const handleImport = useCallback(async () => {
     const uri = await pickImageFromGallery();
     if (!uri) return;
-    addPhoto(createGeoPhoto(uri, 'gallery', await resolveCoords()));
+    await addPhoto({ uri, source: 'gallery', coords: await resolveCoords() });
   }, [addPhoto, resolveCoords]);
 
   const handleCapture = async () => {
     const photo = await takePhoto();
     if (!photo) return;
-    addPhoto(createGeoPhoto(photo.uri, 'camera', await resolveCoords()));
+    await addPhoto({ uri: photo.uri, source: 'camera', coords: await resolveCoords() });
   };
 
   if (cameraPermission === 'checking') {
