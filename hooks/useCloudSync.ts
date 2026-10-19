@@ -32,7 +32,8 @@ export function useCloudSync() {
   const [isUploading, setIsUploading] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
-  const { data } = useLiveQuery(photosRepo.pendingQuery());
+  // '' al cerrar sesión: no coincide con ninguna fila (ver useOwnerId)
+  const { data } = useLiveQuery(photosRepo.pendingQuery(userId ?? ''), [userId]);
   // Las pendientes sin archivo no cuentan en el botón: no hay nada que subir
   const { pendingCount, missingFileCount } = useMemo(() => {
     const uploadable = data.filter(canUpload).length;
@@ -44,7 +45,7 @@ export function useCloudSync() {
   const uploadOne = useCallback(
     async (id: number): Promise<string | null> => {
       if (!userId) return 'Inicia sesión para subir fotos';
-      const row = photosRepo.detailQuery(id).get();
+      const row = photosRepo.detailQuery(id, userId).get();
       if (!row) return 'Esta foto ya no existe';
       setIsUploading(true);
       try {
@@ -65,7 +66,7 @@ export function useCloudSync() {
    */
   const syncPending = useCallback(async (): Promise<SyncResult> => {
     if (!userId) return { ok: 0, failed: 0, missingFile: 0, errors: ['Inicia sesión para subir fotos'] };
-    const all = photosRepo.pendingForUpload();
+    const all = photosRepo.pendingForUpload(userId);
     const pending = all.filter(canUpload);
     const result: SyncResult = { ok: 0, failed: 0, missingFile: all.length - pending.length, errors: [] };
     setProgress({ done: 0, total: pending.length });

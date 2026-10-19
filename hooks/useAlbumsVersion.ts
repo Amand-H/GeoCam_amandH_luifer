@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { albumsRepo } from '@/db/repositories/albums';
+import { useOwnerId } from '@/hooks/useOwnerId';
 
 /**
  * useLiveQuery solo escucha la tabla del FROM. Las consultas de fotos hacen join con albums,
@@ -7,6 +8,7 @@ import { albumsRepo } from '@/db/repositories/albums';
  * o borrar un álbum.
  */
 export function useAlbumsVersion(): number | undefined {
-  const { updatedAt } = useLiveQuery(albumsRepo.listQuery());
+  const ownerId = useOwnerId();
+  const { updatedAt } = useLiveQuery(albumsRepo.listQuery(ownerId), [ownerId]);
   return updatedAt?.getTime();
 }

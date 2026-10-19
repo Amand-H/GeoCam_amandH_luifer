@@ -11,6 +11,16 @@ function isPending() {
   return or(isNull(photos.syncedAt), lt(photos.syncedAt, photos.updatedAt));
 }
 
+/** Solo las fotos del usuario de la sesión: otra cuenta en el mismo teléfono no las ve. */
+function ownedBy(ownerId: string) {
+  return eq(photos.ownerId, ownerId);
+}
+
+/** Una foto concreta del usuario: un id de otra cuenta no encuentra nada. */
+function ownPhoto(id: number, ownerId: string) {
+  return and(eq(photos.id, id), ownedBy(ownerId));
+}
+
 /** Fotos con el nombre de su álbum. La tabla principal sigue siendo photos (la que escucha useLiveQuery). */
 function selectWithAlbum() {
   return db
@@ -21,16 +31,18 @@ function selectWithAlbum() {
 
 export const photosRepo = {
   /** Consulta sin ejecutar: la ejecuta useLiveQuery para mantenerse reactiva. */
-  listQuery() {
-    return selectWithAlbum().orderBy(desc(photos.createdAt));
+  listQuery(ownerId: string) {
+    return selectWithAlbum().where(ownedBy(ownerId)).orderBy(desc(photos.createdAt));
   },
 
-  withLocationQuery() {
-    return selectWithAlbum().where(isNotNull(photos.latitude)).orderBy(desc(photos.createdAt));
+  withLocationQuery(ownerId: string) {
+    return selectWithAlbum()
+      .where(and(ownedBy(ownerId), isNotNull(photos.latitude)))
+      .orderBy(desc(photos.createdAt));
   },
 
-  filteredQuery({ search, albumId = null, onlyFavorites = false }: PhotoFilters) {
-    const conditions: SQL[] = [];
+  filteredQuery(ownerId: string, { search, albumId = null, onlyFavorites = false }: PhotoFilters) {
+    const conditions: SQL[] = [ownedBy(ownerId)];
     const term = search?.trim();
     if (term) conditions.push(like(photos.note, `%${term}%`));
     if (albumId === 'none') conditions.push(isNull(photos.albumId));
@@ -38,62 +50,74 @@ export const photosRepo = {
     if (onlyFavorites) conditions.push(eq(photos.favorite, true));
 
     return selectWithAlbum()
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .where(and(...conditions))
       .orderBy(desc(photos.createdAt));
   },
 
-  detailQuery(id: number) {
-    return selectWithAlbum().where(eq(photos.id, id)).limit(1);
+  detailQuery(id: number, ownerId: string) {
+    return selectWithAlbum().where(ownPhoto(id, ownerId)).limit(1);
   },
 
   /** Pendientes de subir, de la más antigua a la más reciente. */
-  pendingForUpload() {
-    return selectWithAlbum().where(isPending()).orderBy(asc(photos.createdAt)).all();
+  pendingForUpload(ownerId: string) {
+    return selectWithAlbum()
+      .where(and(ownedBy(ownerId), isPending()))
+      .orderBy(asc(photos.createdAt))
+      .all();
   },
 
   /**
    * Consulta sin ejecutar para useLiveQuery: el botón Sincronizar se actualiza solo.
    * Devuelve uri y remotePath (no un COUNT) porque saber si el archivo existe no lo puede responder SQLite.
    */
-  pendingQuery() {
+  pendingQuery(ownerId: string) {
     return db
       .select({ id: photos.id, uri: photos.uri, remotePath: photos.remotePath })
       .from(photos)
-      .where(isPending());
+      .where(and(ownedBy(ownerId), isPending()));
   },
 
   /** Lo necesario para borrar todo: el archivo local y, si se subió, su identidad en la nube. */
-  allUris() {
+  allUris(ownerId: string) {
     return db
       .select({ uri: photos.uri, clientId: photos.clientId, remotePath: photos.remotePath })
       .from(photos)
+      .where(ownedBy(ownerId))
       .all();
   },
 
-  findById(id: number) {
-    return db.select().from(photos).where(eq(photos.id, id)).get();
+  findById(id: number, ownerId: string) {
+    return db.select().from(photos).where(ownPhoto(id, ownerId)).get();
   },
 
-  create(data: Omit<NewPhoto, 'id'>) {
-    return db.insert(photos).values(data).returning().get();
+  create(data: Omit<NewPhoto, 'id' | 'ownerId'>, ownerId: string) {
+    return db
+      .insert(photos)
+      .values({ ...data, ownerId })
+      .returning()
+      .get();
   },
 
   /** Toda edición del usuario renueva updatedAt: así la foto vuelve a quedar pendiente de subir. */
-  update(id: number, data: PhotoChanges) {
+  update(id: number, ownerId: string, data: PhotoChanges) {
     return db
       .update(photos)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(photos.id, id));
+      .where(ownPhoto(id, ownerId));
   },
 
   /** Solo registra la sincronización. No toca updatedAt: si lo hiciera, la foto nunca quedaría al día. */
-  markSynced(id: number, remotePath: string) {
-    return db.update(photos).set({ remotePath, syncedAt: new Date() }).where(eq(photos.id, id));
+  markSynced(id: number, ownerId: string, remotePath: string) {
+    return db
+      .update(photos)
+      .set({ remotePath, syncedAt: new Date() })
+      .where(ownPhoto(id, ownerId));
   },
 
   /**
    * Las filas creadas antes de la migración 0003 no tienen clientId ni updatedAt
    * (SQLite no ejecuta $defaultFn al agregar columnas). Se completan una vez al arrancar.
+   * Es mantenimiento de todo el teléfono: no depende del usuario.
    */
   ensureSyncFields() {
     const rows = db
@@ -113,11 +137,16 @@ export const photosRepo = {
     return rows.length;
   },
 
-  remove(id: number) {
-    return db.delete(photos).where(eq(photos.id, id));
+  /** Fotos de antes de la Semana 8 (sin dueño): pasan a ser del usuario indicado. */
+  claimOrphans(ownerId: string) {
+    return db.update(photos).set({ ownerId }).where(isNull(photos.ownerId)).run();
   },
 
-  clearAll() {
-    return db.delete(photos);
+  remove(id: number, ownerId: string) {
+    return db.delete(photos).where(ownPhoto(id, ownerId));
+  },
+
+  clearAll(ownerId: string) {
+    return db.delete(photos).where(ownedBy(ownerId));
   },
 };

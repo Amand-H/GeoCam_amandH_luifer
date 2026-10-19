@@ -63,7 +63,7 @@ export async function uploadPhoto(photo: GeoPhoto, userId: string): Promise<void
     throw new Error(`No se pudo guardar la foto en la nube: ${rowError.message}`);
   }
 
-  await photosRepo.markSynced(photo.id, path);
+  await photosRepo.markSynced(photo.id, userId, path);
 }
 
 export interface RemoteRef {

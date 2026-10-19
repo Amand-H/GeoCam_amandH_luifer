@@ -2,13 +2,19 @@ import { useCallback, useMemo } from 'react';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { photosRepo } from '@/db/repositories/photos';
 import { useAlbumsVersion } from '@/hooks/useAlbumsVersion';
+import { useOwnerId } from '@/hooks/useOwnerId';
 import { removePhotoById, toGeoPhoto } from '@/hooks/usePhotos';
 import type { GeoPhoto } from '@/types/geo';
 
 /** Detalle reactivo de una foto. photo es null si no existe (p. ej. ya se borró). */
 export function usePhoto(id: number) {
+  const ownerId = useOwnerId();
   const albumsVersion = useAlbumsVersion();
-  const { data, error, updatedAt } = useLiveQuery(photosRepo.detailQuery(id), [id, albumsVersion]);
+  const { data, error, updatedAt } = useLiveQuery(photosRepo.detailQuery(id, ownerId), [
+    id,
+    ownerId,
+    albumsVersion,
+  ]);
 
   const photo: GeoPhoto | null = useMemo(() => (data[0] ? toGeoPhoto(data[0]) : null), [data]);
   const favorite = photo?.favorite ?? false;
@@ -16,23 +22,23 @@ export function usePhoto(id: number) {
   const updateNote = useCallback(
     async (note: string) => {
       const trimmed = note.trim();
-      await photosRepo.update(id, { note: trimmed === '' ? null : trimmed });
+      await photosRepo.update(id, ownerId, { note: trimmed === '' ? null : trimmed });
     },
-    [id]
+    [id, ownerId]
   );
 
   const toggleFavorite = useCallback(async () => {
-    await photosRepo.update(id, { favorite: !favorite });
-  }, [id, favorite]);
+    await photosRepo.update(id, ownerId, { favorite: !favorite });
+  }, [id, ownerId, favorite]);
 
   const moveToAlbum = useCallback(
     async (albumId: number | null) => {
-      await photosRepo.update(id, { albumId });
+      await photosRepo.update(id, ownerId, { albumId });
     },
-    [id]
+    [id, ownerId]
   );
 
-  const remove = useCallback(() => removePhotoById(id), [id]);
+  const remove = useCallback(() => removePhotoById(id, ownerId), [id, ownerId]);
 
   return {
     photo,

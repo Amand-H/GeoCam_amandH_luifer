@@ -29,6 +29,13 @@
       "when": 1792423705182,
       "tag": "0003_special_betty_ross",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1792425913080,
+      "tag": "0004_round_captain_america",
+      "breakpoints": true
     }
   ]
 }

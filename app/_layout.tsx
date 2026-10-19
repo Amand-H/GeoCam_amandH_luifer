@@ -6,11 +6,14 @@ import { db } from '@/db/client';
 import migrations from '@/drizzle/migrations';
 import { colors } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { useClaimOrphans } from '@/hooks/useClaimOrphans';
 import { useSyncBootstrap } from '@/hooks/useSyncBootstrap';
 
 /** Decide qué pantallas existen según la sesión. Sin router.replace: Stack.Protected redirige solo. */
 function RootNavigator() {
-  const { session, isLoading } = useAuth();
+  const { session, userId, isLoading } = useAuth();
+  // Fotos y álbumes anteriores a la migración 0004: el primer usuario de este teléfono se queda con ellos
+  useClaimOrphans(userId);
 
   // Mientras se lee la sesión de SecureStore no se muestra nada para no parpadear el login
   if (isLoading) return <View style={{ flex: 1, backgroundColor: colors.background }} />;

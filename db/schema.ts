@@ -1,4 +1,4 @@
-import { index, sqliteTable, integer, real, text } from 'drizzle-orm/sqlite-core';
+import { index, sqliteTable, integer, real, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 /**
  * drizzle-kit ejecuta este archivo en Node, donde expo-crypto (módulo nativo) no carga.
@@ -10,13 +10,20 @@ function newClientId(): string {
 }
 
 // albums va antes que photos porque photos la referencia
-export const albums = sqliteTable('albums', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  name: text('name').notNull().unique(),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' })
-    .notNull()
-    .$defaultFn(() => new Date()),
-});
+export const albums = sqliteTable(
+  'albums',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    name: text('name').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    // Usuario de Supabase dueño del álbum (null = creado antes de la Semana 8, sin reclamar)
+    ownerId: text('owner_id'),
+  },
+  // Único por dueño: dos usuarios del mismo teléfono pueden tener un álbum con el mismo nombre
+  (t) => [uniqueIndex('albums_owner_name_unique').on(t.ownerId, t.name)]
+);
 
 export const photos = sqliteTable(
   'photos',
@@ -41,6 +48,8 @@ export const photos = sqliteTable(
     // Ruta del archivo en el bucket y momento de la última sincronización
     remotePath: text('remote_path'),
     syncedAt: integer('synced_at', { mode: 'timestamp_ms' }),
+    // Usuario de Supabase dueño de la foto (null = tomada antes de la Semana 8, sin reclamar)
+    ownerId: text('owner_id'),
   },
   // Las listas se ordenan por fecha descendente: el índice evita ordenar toda la tabla
   (t) => [index('photos_created_at_idx').on(t.createdAt)]
