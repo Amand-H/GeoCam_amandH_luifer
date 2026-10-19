@@ -22,6 +22,13 @@
       "when": 1791762206173,
       "tag": "0002_modern_dagger",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1792423705182,
+      "tag": "0003_special_betty_ross",
+      "breakpoints": true
     }
   ]
 }

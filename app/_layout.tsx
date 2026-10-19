@@ -6,6 +6,7 @@ import { db } from '@/db/client';
 import migrations from '@/drizzle/migrations';
 import { colors } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { useSyncBootstrap } from '@/hooks/useSyncBootstrap';
 
 /** Decide qué pantallas existen según la sesión. Sin router.replace: Stack.Protected redirige solo. */
 function RootNavigator() {
@@ -31,6 +32,8 @@ function RootNavigator() {
 export default function RootLayout() {
   // Única excepción a las capas: aplicar las migraciones antes de montar cualquier pantalla
   const { success, error } = useMigrations(db, migrations);
+  // Fotos anteriores a la migración 0003: reciben clientId y updatedAt
+  useSyncBootstrap(success);
 
   if (error) {
     return (

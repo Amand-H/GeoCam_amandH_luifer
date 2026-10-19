@@ -23,6 +23,14 @@ export interface GeoPhoto {
   favorite: boolean;
   albumId: number | null;
   albumName: string | null;
+  /** UUID que identifica la misma foto en el teléfono y en la nube. */
+  clientId: string | null;
+  /** Ruta del archivo en el bucket; null si nunca se subió. */
+  remotePath: string | null;
+  syncedAt: number | null; // ms
+  updatedAt: number | null; // ms
+  /** Subida y sin cambios posteriores a la última sincronización. */
+  isSynced: boolean;
 }
 
 export interface Album {

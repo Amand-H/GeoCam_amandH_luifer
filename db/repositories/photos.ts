@@ -1,3 +1,4 @@
+import * as Crypto from 'expo-crypto';
 import { and, desc, eq, getTableColumns, isNotNull, isNull, like, type SQL } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { albums, photos, type NewPhoto } from '@/db/schema';
@@ -52,8 +53,39 @@ export const photosRepo = {
     return db.insert(photos).values(data).returning().get();
   },
 
+  /** Toda edición del usuario renueva updatedAt: así la foto vuelve a quedar pendiente de subir. */
   update(id: number, data: PhotoChanges) {
-    return db.update(photos).set(data).where(eq(photos.id, id));
+    return db
+      .update(photos)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(photos.id, id));
+  },
+
+  /** Solo registra la sincronización. No toca updatedAt: si lo hiciera, la foto nunca quedaría al día. */
+  markSynced(id: number, remotePath: string) {
+    return db.update(photos).set({ remotePath, syncedAt: new Date() }).where(eq(photos.id, id));
+  },
+
+  /**
+   * Las filas creadas antes de la migración 0003 no tienen clientId ni updatedAt
+   * (SQLite no ejecuta $defaultFn al agregar columnas). Se completan una vez al arrancar.
+   */
+  ensureSyncFields() {
+    const rows = db
+      .select({ id: photos.id, createdAt: photos.createdAt, updatedAt: photos.updatedAt })
+      .from(photos)
+      .where(isNull(photos.clientId))
+      .all();
+    if (rows.length === 0) return 0;
+    db.transaction((tx) => {
+      for (const row of rows) {
+        tx.update(photos)
+          .set({ clientId: Crypto.randomUUID(), updatedAt: row.updatedAt ?? row.createdAt })
+          .where(eq(photos.id, row.id))
+          .run();
+      }
+    });
+    return rows.length;
   },
 
   remove(id: number) {

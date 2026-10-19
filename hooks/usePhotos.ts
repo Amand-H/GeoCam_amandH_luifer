@@ -17,6 +17,8 @@ type PhotoRow = Photo & { albumName: string | null };
 /** Fila plana de SQLite → objeto de dominio con coords anidadas. */
 export function toGeoPhoto(row: PhotoRow): GeoPhoto {
   const createdAt = row.createdAt.getTime();
+  const syncedAt = row.syncedAt?.getTime() ?? null;
+  const updatedAt = row.updatedAt?.getTime() ?? null;
   const coords: Coords | null =
     row.latitude !== null && row.longitude !== null
       ? { latitude: row.latitude, longitude: row.longitude, accuracy: row.accuracy, timestamp: createdAt }
@@ -31,6 +33,11 @@ export function toGeoPhoto(row: PhotoRow): GeoPhoto {
     favorite: row.favorite,
     albumId: row.albumId,
     albumName: row.albumName,
+    clientId: row.clientId,
+    remotePath: row.remotePath,
+    syncedAt,
+    updatedAt,
+    isSynced: syncedAt !== null && (updatedAt === null || syncedAt >= updatedAt),
   };
 }
 
