@@ -36,8 +36,9 @@ export default function FotosScreen() {
   const { syncPending, pendingCount, progress, isUploading } = useCloudSync();
 
   const handleSync = async () => {
-    const { ok, failed, errors } = await syncPending();
-    const summary = `Se subieron ${ok}. Quedaron ${failed} pendientes.`;
+    const { ok, failed, missingFile, errors } = await syncPending();
+    let summary = `Se subieron ${ok}. Quedaron ${failed} pendientes.`;
+    if (missingFile > 0) summary += ` ${missingFile} sin archivo (no se pueden subir).`;
     Alert.alert('Sincronización', errors[0] ? `${summary}\n\nPrimer error: ${errors[0]}` : summary);
   };
 

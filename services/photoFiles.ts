@@ -26,6 +26,15 @@ export function deletePhotoFile(uri: string): void {
   }
 }
 
+/** ¿Sigue el archivo en el teléfono? Las fotos guardadas en caché antes de la C5 de la Semana 7 pueden no estar. */
+export function photoFileExists(uri: string): boolean {
+  try {
+    return new File(uri).exists;
+  } catch {
+    return false;
+  }
+}
+
 const CONTENT_TYPES: Record<string, string> = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
@@ -45,4 +54,25 @@ export async function readPhotoBytes(uri: string): Promise<{ bytes: ArrayBuffer;
   const bytes = await file.arrayBuffer();
   const contentType = CONTENT_TYPES[file.extension.toLowerCase()] ?? 'image/jpeg';
   return { bytes, contentType };
+}
+
+/** Solo desarrollo: explica por qué no se pudo leer una foto (¿existe? ¿dónde está? ¿fetch la lee?). */
+export async function diagnosePhotoFile(uri: string): Promise<Record<string, unknown>> {
+  let fileExists: boolean | string;
+  try {
+    fileExists = new File(uri).exists;
+  } catch (e) {
+    fileExists = `error: ${e instanceof Error ? e.message : String(e)}`;
+  }
+  let location = 'otra';
+  if (uri.startsWith(photosDir.uri)) location = 'Paths.document/photos';
+  else if (uri.startsWith(Paths.document.uri)) location = 'Paths.document (fuera de photos)';
+  else if (uri.startsWith(Paths.cache.uri)) location = 'caché';
+  let fetchBytes: number | string;
+  try {
+    fetchBytes = (await (await fetch(uri)).arrayBuffer()).byteLength;
+  } catch (e) {
+    fetchBytes = `error: ${e instanceof Error ? e.message : String(e)}`;
+  }
+  return { uri, fileExists, location, fetchBytes, documentUri: Paths.document.uri, cacheUri: Paths.cache.uri };
 }

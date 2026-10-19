@@ -14,7 +14,7 @@ import { Chip } from '@/components/Chip';
 import { PhotoImage } from '@/components/PhotoImage';
 import { colors } from '@/constants/theme';
 import { useAlbums } from '@/hooks/useAlbums';
-import { useCloudSync } from '@/hooks/useCloudSync';
+import { canUpload, useCloudSync } from '@/hooks/useCloudSync';
 import { usePhoto } from '@/hooks/usePhoto';
 
 const headerOptions = {
@@ -72,8 +72,13 @@ export default function FotoDetalleScreen() {
     if (error) Alert.alert('No se pudo subir', error);
   };
 
+  const uploadable = canUpload(photo);
+  const uploadDisabled = photo.isSynced || isUploading || !uploadable;
+
   let syncLabel = 'Aún no está en la nube';
-  if (photo.isSynced && photo.syncedAt !== null) {
+  if (!uploadable) {
+    syncLabel = 'Sin archivo: no se puede subir';
+  } else if (photo.isSynced && photo.syncedAt !== null) {
     syncLabel = `Sincronizada el ${new Date(photo.syncedAt).toLocaleString('es-CO')}`;
   } else if (photo.remotePath) {
     syncLabel = 'Tiene cambios sin subir';
@@ -130,11 +135,11 @@ export default function FotoDetalleScreen() {
 
       <View style={styles.section}>
         <Text style={styles.label}>Nube</Text>
-        <Text style={styles.muted}>{syncLabel}</Text>
+        <Text style={[styles.muted, !uploadable && { color: colors.warning }]}>{syncLabel}</Text>
         <Pressable
           onPress={handleUpload}
-          disabled={photo.isSynced || isUploading}
-          style={[styles.button, (photo.isSynced || isUploading) && { opacity: 0.4 }]}
+          disabled={uploadDisabled}
+          style={[styles.button, uploadDisabled && { opacity: 0.4 }]}
         >
           {isUploading ? (
             <ActivityIndicator color="#0a0a0a" />

@@ -1,5 +1,5 @@
 import * as Crypto from 'expo-crypto';
-import { and, asc, count, desc, eq, getTableColumns, isNotNull, isNull, like, lt, or, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, getTableColumns, isNotNull, isNull, like, lt, or, type SQL } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { albums, photos, type NewPhoto } from '@/db/schema';
 import type { PhotoFilters } from '@/types/geo';
@@ -51,9 +51,15 @@ export const photosRepo = {
     return selectWithAlbum().where(isPending()).orderBy(asc(photos.createdAt)).all();
   },
 
-  /** Consulta sin ejecutar para useLiveQuery: el botón Sincronizar se actualiza solo. */
-  pendingCountQuery() {
-    return db.select({ count: count() }).from(photos).where(isPending());
+  /**
+   * Consulta sin ejecutar para useLiveQuery: el botón Sincronizar se actualiza solo.
+   * Devuelve uri y remotePath (no un COUNT) porque saber si el archivo existe no lo puede responder SQLite.
+   */
+  pendingQuery() {
+    return db
+      .select({ id: photos.id, uri: photos.uri, remotePath: photos.remotePath })
+      .from(photos)
+      .where(isPending());
   },
 
   allUris() {
