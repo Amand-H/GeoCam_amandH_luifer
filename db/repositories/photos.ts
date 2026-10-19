@@ -1,10 +1,15 @@
 import * as Crypto from 'expo-crypto';
-import { and, desc, eq, getTableColumns, isNotNull, isNull, like, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, getTableColumns, isNotNull, isNull, like, lt, or, type SQL } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { albums, photos, type NewPhoto } from '@/db/schema';
 import type { PhotoFilters } from '@/types/geo';
 
 export type PhotoChanges = Partial<Pick<NewPhoto, 'note' | 'favorite' | 'albumId'>>;
+
+/** Nunca subida, o editada después de la última sincronización. */
+function isPending() {
+  return or(isNull(photos.syncedAt), lt(photos.syncedAt, photos.updatedAt));
+}
 
 /** Fotos con el nombre de su álbum. La tabla principal sigue siendo photos (la que escucha useLiveQuery). */
 function selectWithAlbum() {
@@ -39,6 +44,16 @@ export const photosRepo = {
 
   detailQuery(id: number) {
     return selectWithAlbum().where(eq(photos.id, id)).limit(1);
+  },
+
+  /** Pendientes de subir, de la más antigua a la más reciente. */
+  pendingForUpload() {
+    return selectWithAlbum().where(isPending()).orderBy(asc(photos.createdAt)).all();
+  },
+
+  /** Consulta sin ejecutar para useLiveQuery: el botón Sincronizar se actualiza solo. */
+  pendingCountQuery() {
+    return db.select({ count: count() }).from(photos).where(isPending());
   },
 
   allUris() {
