@@ -33,6 +33,19 @@ export interface GeoPhoto {
   isSynced: boolean;
 }
 
+/** Foto leída de Supabase (pestaña Nube). No depende de que exista en este teléfono. */
+export interface CloudPhoto {
+  clientId: string;
+  storagePath: string;
+  /** URL firmada temporal; null si no se pudo firmar. */
+  url: string | null;
+  coords: { latitude: number; longitude: number } | null;
+  note: string | null;
+  favorite: boolean;
+  source: 'camera' | 'gallery';
+  takenAt: number; // ms
+}
+
 export interface Album {
   id: number;
   name: string;
