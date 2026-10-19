@@ -60,8 +60,12 @@ export default function FotoDetalleScreen() {
         text: 'Eliminar',
         style: 'destructive',
         onPress: async () => {
-          await remove();
-          router.back();
+          try {
+            await remove();
+            router.back();
+          } catch (e) {
+            Alert.alert('No se pudo eliminar', e instanceof Error ? e.message : 'Error al borrar');
+          }
         },
       },
     ]);

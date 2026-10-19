@@ -66,6 +66,35 @@ export async function uploadPhoto(photo: GeoPhoto, userId: string): Promise<void
   await photosRepo.markSynced(photo.id, path);
 }
 
+export interface RemoteRef {
+  clientId: string | null;
+  remotePath: string | null;
+}
+
+/**
+ * Borra de la nube primero las filas y luego los archivos.
+ * Si fallan las filas no se toca ningún archivo (la foto sigue completa en la nube).
+ * Si fallan los archivos, las filas ya no están: reintentar es seguro porque borrar
+ * una fila que no existe no da error y vuelve a intentar los archivos.
+ */
+export async function deleteRemoteMany(refs: RemoteRef[]): Promise<void> {
+  const synced = refs.filter((r): r is { clientId: string; remotePath: string } => !!r.clientId && !!r.remotePath);
+  if (synced.length === 0) return;
+
+  const { error: rowError } = await supabase
+    .from('photos')
+    .delete()
+    .in('client_id', synced.map((r) => r.clientId));
+  if (rowError) throw new Error(`No se pudo borrar de la nube: ${rowError.message}`);
+
+  const { error: fileError } = await supabase.storage.from(BUCKET).remove(synced.map((r) => r.remotePath));
+  if (fileError) throw new Error(`No se pudo borrar el archivo de la nube: ${fileError.message}`);
+}
+
+export function deleteRemote(photo: RemoteRef): Promise<void> {
+  return deleteRemoteMany([photo]);
+}
+
 /** URL temporal para mostrar una foto del bucket privado. */
 export async function signedUrl(path: string): Promise<string> {
   const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, SIGNED_URL_SECONDS);

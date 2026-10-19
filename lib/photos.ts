@@ -14,8 +14,8 @@ export async function pickImageFromGallery(): Promise<string | null> {
   return result.assets[0]?.uri ?? null;
 }
 
-/** Pregunta con un Alert si se borran todas las fotos (usado por useShake). */
-export function confirmClearAll(count: number, clearAll: () => void): void {
+/** Pregunta con un Alert si se borran todas las fotos (usado por useShake). Muestra el error si falla. */
+export function confirmClearAll(count: number, clearAll: () => Promise<void>): void {
   if (count === 0) {
     Alert.alert('GeoCam', 'No hay fotos para borrar.');
     return;
@@ -25,7 +25,15 @@ export function confirmClearAll(count: number, clearAll: () => void): void {
     `Agitaste el teléfono. Se eliminarán ${count} foto(s).`,
     [
       { text: 'Cancelar', style: 'cancel' },
-      { text: 'Borrar todo', style: 'destructive', onPress: clearAll },
+      {
+        text: 'Borrar todo',
+        style: 'destructive',
+        onPress: () => {
+          clearAll().catch((e: unknown) =>
+            Alert.alert('No se borró nada', e instanceof Error ? e.message : 'Error al borrar')
+          );
+        },
+      },
     ]
   );
 }

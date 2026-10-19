@@ -62,8 +62,12 @@ export const photosRepo = {
       .where(isPending());
   },
 
+  /** Lo necesario para borrar todo: el archivo local y, si se subió, su identidad en la nube. */
   allUris() {
-    return db.select({ uri: photos.uri }).from(photos).all();
+    return db
+      .select({ uri: photos.uri, clientId: photos.clientId, remotePath: photos.remotePath })
+      .from(photos)
+      .all();
   },
 
   findById(id: number) {

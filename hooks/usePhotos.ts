@@ -3,6 +3,8 @@ import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { photosRepo } from '@/db/repositories/photos';
 import type { Photo } from '@/db/schema';
 import { useAlbumsVersion } from '@/hooks/useAlbumsVersion';
+import { deleteRemote, deleteRemoteMany } from '@/services/cloudPhotos';
+import { isOnline } from '@/services/network';
 import { deletePhotoFile, persistPhoto } from '@/services/photoFiles';
 import type { Coords, GeoPhoto, PhotoFilters } from '@/types/geo';
 
@@ -41,14 +43,24 @@ export function toGeoPhoto(row: PhotoRow): GeoPhoto {
   };
 }
 
+const OFFLINE_ONE = 'Sin conexión: la foto está en la nube y no se borró. Inténtalo con internet.';
+const OFFLINE_ALL = 'Sin conexión: hay fotos en la nube, así que no se borró ninguna. Inténtalo con internet.';
+
 /**
- * Compartida con usePhoto para que borrar desde el detalle haga lo mismo que desde el mapa:
- * primero el registro y luego el archivo.
+ * Compartida con usePhoto para que borrar desde el detalle haga lo mismo que desde el mapa.
+ * Orden: nube (fila → archivo) → registro local → archivo local.
+ * Si la parte remota falla o no hay conexión se lanza el error y no se toca nada local:
+ * así nunca queda una foto en la nube sin su copia en el teléfono que permita borrarla.
  */
 export async function removePhotoById(id: number): Promise<void> {
   const row = photosRepo.findById(id);
+  if (!row) return;
+  if (row.remotePath) {
+    if (!(await isOnline())) throw new Error(OFFLINE_ONE);
+    await deleteRemote(row);
+  }
   await photosRepo.remove(id);
-  if (row) deletePhotoFile(row.uri);
+  deletePhotoFile(row.uri);
 }
 
 export function usePhotos({ search = '', albumId = null, onlyFavorites = false }: PhotoFilters = {}) {
@@ -84,10 +96,15 @@ export function usePhotos({ search = '', albumId = null, onlyFavorites = false }
 
   const removePhoto = useCallback((id: number) => removePhotoById(id), []);
 
+  /** Misma regla que removePhotoById para todas a la vez: o se borra todo o no se borra nada. */
   const clearAll = useCallback(async () => {
-    const uris = photosRepo.allUris();
+    const rows = photosRepo.allUris();
+    if (rows.some((r) => r.remotePath)) {
+      if (!(await isOnline())) throw new Error(OFFLINE_ALL);
+      await deleteRemoteMany(rows);
+    }
     await photosRepo.clearAll();
-    uris.forEach(({ uri }) => deletePhotoFile(uri));
+    rows.forEach(({ uri }) => deletePhotoFile(uri));
   }, []);
 
   return {
