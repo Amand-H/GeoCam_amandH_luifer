@@ -5,6 +5,28 @@ import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator';
 import { db } from '@/db/client';
 import migrations from '@/drizzle/migrations';
 import { colors } from '@/constants/theme';
+import { AuthProvider, useAuth } from '@/context/AuthContext';
+
+/** Decide qué pantallas existen según la sesión. Sin router.replace: Stack.Protected redirige solo. */
+function RootNavigator() {
+  const { session, isLoading } = useAuth();
+
+  // Mientras se lee la sesión de SecureStore no se muestra nada para no parpadear el login
+  if (isLoading) return <View style={{ flex: 1, backgroundColor: colors.background }} />;
+
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Protected guard={!!session}>
+        <Stack.Screen name="(tabs)" />
+        {/* El detalle completa sus opciones de cabecera (colores del tema) con su propio <Stack.Screen> */}
+        <Stack.Screen name="foto/[id]" options={{ headerShown: true, title: 'Foto' }} />
+      </Stack.Protected>
+      <Stack.Protected guard={!session}>
+        <Stack.Screen name="login" />
+      </Stack.Protected>
+    </Stack>
+  );
+}
 
 export default function RootLayout() {
   // Única excepción a las capas: aplicar las migraciones antes de montar cualquier pantalla
@@ -32,7 +54,9 @@ export default function RootLayout() {
 
   return (
     <>
-      <Stack screenOptions={{ headerShown: false }} />
+      <AuthProvider>
+        <RootNavigator />
+      </AuthProvider>
       <StatusBar style="light" />
     </>
   );

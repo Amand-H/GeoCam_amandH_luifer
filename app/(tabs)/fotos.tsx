@@ -6,6 +6,7 @@ import { AlbumNameModal } from '@/components/AlbumNameModal';
 import { Chip } from '@/components/Chip';
 import { PhotoImage } from '@/components/PhotoImage';
 import { colors } from '@/constants/theme';
+import { useAuth } from '@/context/AuthContext';
 import { useAlbums } from '@/hooks/useAlbums';
 import { useDevTools } from '@/hooks/useDevTools';
 import { usePhotos } from '@/hooks/usePhotos';
@@ -29,6 +30,22 @@ export default function FotosScreen() {
   const { photos } = usePhotos({ search, albumId: albumFilter, onlyFavorites });
   const { albums, createAlbum, renameAlbum, removeAlbum } = useAlbums();
   const devTools = useDevTools();
+  const { email, signOut } = useAuth();
+
+  // Al cerrar la sesión, Stack.Protected lleva al login solo (sin router.replace)
+  const confirmSignOut = () => {
+    Alert.alert('¿Cerrar sesión?', email ?? undefined, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Cerrar sesión',
+        style: 'destructive',
+        onPress: async () => {
+          const error = await signOut();
+          if (error) Alert.alert('No se pudo cerrar la sesión', error);
+        },
+      },
+    ]);
+  };
 
   const confirmRemoveAlbum = (album: Album) => {
     Alert.alert(`¿Eliminar "${album.name}"?`, 'Las fotos quedarán sin álbum, no se borran.', [
@@ -88,13 +105,20 @@ export default function FotosScreen() {
     <View style={[styles.fill, { paddingTop: insets.top + 12 }]}>
       <View style={styles.header}>
         <Text style={styles.title}>Fotos</Text>
-        {/* Herramientas de rendimiento: solo existen en desarrollo */}
-        {__DEV__ && (
-          <Pressable onPress={devTools.openMenu} style={styles.devButton} hitSlop={8}>
-            <Text style={styles.devText}>⚙️ Dev</Text>
-          </Pressable>
-        )}
+        <View style={styles.headerActions}>
+          {/* Herramientas de rendimiento: solo existen en desarrollo */}
+          {__DEV__ && (
+            <Pressable onPress={devTools.openMenu} style={styles.devButton} hitSlop={8}>
+              <Text style={styles.devText}>⚙️ Dev</Text>
+            </Pressable>
+          )}
+        </View>
       </View>
+      <Pressable onPress={confirmSignOut} style={styles.signOut} hitSlop={8}>
+        <Text style={styles.signOutText} numberOfLines={1}>
+          Cerrar sesión ({email})
+        </Text>
+      </Pressable>
       <TextInput
         value={search}
         onChangeText={setSearch}
@@ -168,6 +192,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   title: { color: colors.text, fontSize: 28, fontWeight: '800' },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  signOut: { alignSelf: 'flex-start', marginHorizontal: 16, marginTop: -6, marginBottom: 12 },
+  signOutText: { color: colors.danger, fontSize: 12, fontWeight: '600' },
   devButton: {
     paddingHorizontal: 10,
     paddingVertical: 6,
