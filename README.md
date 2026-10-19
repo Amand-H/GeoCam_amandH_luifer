@@ -2,7 +2,7 @@
 
 Cámara que etiqueta cada foto con coordenadas GPS, reacciona al movimiento del teléfono y guarda
 todo en una base de datos local para funcionar sin conexión.
-Taller Integrador 2 · **Semana 6: Módulos Nativos y Sensores** · **Semana 7: Persistencia con Drizzle ORM + SQLite**.
+Taller Integrador 2 · **Semana 6: Módulos Nativos y Sensores** · **Semana 7: Persistencia con Drizzle ORM + SQLite** · **Semana 8: Supabase (auth, Storage, RLS y Realtime)**.
 
 **Integrantes:** Luis Nuñez, Amand Herrera
 
@@ -10,6 +10,203 @@ Construida con **Expo SDK 57**, Expo Router y TypeScript estricto. Todo el acces
 está encapsulado en Custom Hooks tipados (sin `any`) que exponen los errores como estado para la UI.
 
 ## Semana 8 – GeoCam en la nube
+
+Las fotos se pueden subir a **Supabase** (Storage + PostgreSQL) con cuenta propia. La app sigue siendo
+offline-first: SQLite es la fuente de verdad en el teléfono y la nube es una copia que se sincroniza a pedido.
+
+![Flujo Semana 8](docs/screenshots/flujo-semana8.gif)
+
+| Requisito | Implementación |
+| --- | --- |
+| T1. Cliente y credenciales | `lib/supabase.ts`, `lib/secureStorage.ts` (SecureStore por fragmentos de 1000), `.env.example` |
+| T2. Autenticación | `context/AuthContext.tsx`, `app/login.tsx`, `Stack.Protected` en `app/_layout.tsx` |
+| T3. Backend remoto | [`supabase/schema.sql`](supabase/schema.sql): tabla `photos` con RLS y bucket privado `geocam` |
+| T4. Migración `0003` | `client_id`, `updated_at`, `remote_path`, `synced_at` en `photos` |
+| T5. Subir una foto | `services/cloudPhotos.ts` + `hooks/useCloudSync.ts`; botón en el detalle e insignia ☁️ / ☁️• |
+| C1. Pendientes | Botón **Sincronizar (N)** en Fotos, secuencial y con progreso ("Subiendo 3 de 7…") |
+| C2. Sin duplicados ni huérfanos | Ruta fija + `upsert` del archivo y de la fila (`onConflict: 'client_id'`) y borrado compensatorio |
+| C3. Borrado coherente | Nube (fila → archivo) → registro local → archivo local; sin conexión no se borra nada |
+| C4. Pestaña Nube | `app/(tabs)/nube.tsx` + `hooks/useCloudPhotos.ts`: URLs firmadas y Realtime |
+| C5. Datos por usuario | Migración `0004`: `owner_id` en `photos` y `albums`; todas las consultas filtran por dueño |
+
+### Las dos bases
+
+```mermaid
+erDiagram
+    LOCAL_albums {
+        integer id PK
+        text name "único por (owner_id, name)"
+        integer created_at
+        text owner_id "0004"
+    }
+    LOCAL_photos {
+        integer id PK
+        text uri "archivo en Paths.document/photos"
+        real latitude
+        real longitude
+        real accuracy
+        text source
+        integer created_at
+        integer album_id FK
+        text note
+        integer favorite
+        text client_id UK "0003"
+        integer updated_at "0003"
+        text remote_path "0003"
+        integer synced_at "0003"
+        text owner_id "0004"
+    }
+    auth_users {
+        uuid id PK
+        text email
+    }
+    public_photos {
+        bigint id PK
+        uuid user_id FK "default auth.uid()"
+        uuid client_id UK
+        text storage_path UK
+        float8 latitude
+        float8 longitude
+        text note
+        boolean favorite
+        text source
+        timestamptz taken_at
+        timestamptz updated_at
+        timestamptz created_at
+    }
+    storage_geocam {
+        text name "user_id/client_id.jpg"
+        text bucket_id "geocam (privado)"
+    }
+
+    LOCAL_albums ||--o{ LOCAL_photos : "album_id"
+    auth_users ||--o{ public_photos : "user_id"
+    LOCAL_photos ||--o| public_photos : "client_id = client_id"
+    LOCAL_photos ||--o| storage_geocam : "remote_path = storage_path"
+    public_photos ||--|| storage_geocam : "storage_path = name"
+```
+
+`LOCAL_*` son las tablas de SQLite en el teléfono; `auth_users`, `public_photos` y `storage_geocam` viven en
+Supabase. El `id` autoincremental solo vale en un teléfono: lo que identifica a la misma foto en los dos
+lados es el `client_id` (UUID creado en el teléfono). `owner_id` en SQLite guarda el `auth.users.id`.
+
+### Flujo de sincronización
+
+```mermaid
+flowchart LR
+    P["Pendiente<br/>synced_at IS NULL<br/>o synced_at < updated_at"] --> R{"¿Tiene<br/>remote_path?"}
+    R -- no --> F["Subir archivo<br/>upsert: true<br/>user_id/client_id.jpg"]
+    R -- sí --> U
+    F --> U["upsert de la fila<br/>onConflict: client_id"]
+    U -- ok --> M["markSynced<br/>remote_path + synced_at"]
+    U -- falla --> X{"¿Archivo subido<br/>en este intento?"}
+    X -- sí --> D["Borrar el archivo<br/>y relanzar el error"]
+    X -- no --> E["Relanzar el error"]
+```
+
+- **Pendiente:** nunca subida, o editada después de la última subida. Cada edición (nota, ★, álbum) renueva
+  `updated_at`; `markSynced` escribe solo `remote_path` y `synced_at` y **no toca `updated_at`**.
+- **Repetir es seguro:** la ruta del archivo depende solo del `client_id` y la fila usa `upsert`, así que
+  sincronizar dos veces no duplica filas ni archivos. Una foto ya subida solo actualiza su fila.
+- **Sincronizar (N)** sube una por una; si una falla, la anota y sigue con las demás.
+- **Fotos sin archivo:** las fotos guardadas en caché antes de la C5 de la Semana 7 pueden haber perdido su
+  archivo. Si nunca se subieron, no se intentan, no cuentan en N y el detalle avisa "Sin archivo".
+
+### Borrado y comportamiento sin conexión
+
+| La foto… | Con conexión | Sin conexión |
+| --- | --- | --- |
+| nunca se subió (`remote_path` nulo) | Se borra el registro y el archivo local | Igual: es solo local |
+| está en la nube | Fila remota → archivo del bucket → registro local → archivo local | **No se borra nada** y se avisa |
+
+- Si la parte remota falla, lo local no se toca: la foto sigue completa en el teléfono y se puede reintentar.
+- Si se borró la fila pero falló el archivo del bucket, reintentar es seguro (borrar una fila que no existe
+  no da error y vuelve a intentar el archivo).
+- **Borrar todo (agitar el teléfono):** misma regla para todas a la vez. Si hay alguna foto en la nube y no
+  hay conexión, se cancela todo. Nunca queda a medias.
+- **Cerrar sesión no borra** los datos locales: solo los oculta. El mismo usuario los vuelve a ver al entrar.
+
+### Datos locales por usuario y filas antiguas
+
+Cada foto y álbum local tiene `owner_id`, y todas las consultas filtran por el usuario de la sesión. Una
+segunda cuenta en el mismo teléfono ve GeoCam, Mapa, Fotos, Nube y Sincronizar vacíos.
+
+**Decisión sobre las filas antiguas:** las fotos y álbumes creados antes de la migración `0004` no tienen
+dueño. El **primer usuario que inicia sesión en el teléfono se queda con ellos** (`claimOrphans`). Se hace
+una sola vez por teléfono: la marca `geocam.orphansClaimed` en SecureStore impide que un segundo usuario se
+los lleve. Se eligió así porque, antes de la Semana 8, el teléfono tenía un solo usuario.
+
+### SQL del backend
+
+Archivo versionado: [`supabase/schema.sql`](supabase/schema.sql). Además del SQL de la guía incluye la
+política `UPDATE` de `photos` y la de `storage.objects` (necesarias para el `upsert`) y la publicación en
+`supabase_realtime` (pestaña Nube).
+
+```sql
+-- ===== Tabla remota de fotos =====
+create table public.photos (
+  id bigint generated always as identity primary key,
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  client_id uuid not null unique,          -- UUID creado en el teléfono: identifica la misma foto en ambos lados
+  storage_path text not null unique,
+  latitude double precision,
+  longitude double precision,
+  note text,
+  favorite boolean not null default false,
+  source text not null check (source in ('camera', 'gallery')),
+  taken_at timestamptz not null,
+  updated_at timestamptz not null,         -- última modificación hecha por el usuario
+  created_at timestamptz not null default now()
+);
+
+alter table public.photos enable row level security;
+
+create policy "ver las mías" on public.photos
+  for select to authenticated using ((select auth.uid()) = user_id);
+create policy "crear las mías" on public.photos
+  for insert to authenticated with check ((select auth.uid()) = user_id);
+create policy "borrar las mías" on public.photos
+  for delete to authenticated using ((select auth.uid()) = user_id);
+-- (casa C1/C2) upsert de una foto editada después de subirla
+create policy "actualizar las mías" on public.photos
+  for update to authenticated
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
+
+-- (casa C4) cambios en vivo para la pestaña Nube
+alter publication supabase_realtime add table public.photos;
+
+-- ===== Bucket privado: las fotos con ubicación son datos personales =====
+insert into storage.buckets (id, name, public) values ('geocam', 'geocam', false);
+
+create policy "subir a mi carpeta" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'geocam' and (storage.foldername(name))[1] = (select auth.uid()::text));
+create policy "leer mi carpeta" on storage.objects
+  for select to authenticated
+  using (bucket_id = 'geocam' and (storage.foldername(name))[1] = (select auth.uid()::text));
+create policy "borrar de mi carpeta" on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'geocam' and (storage.foldername(name))[1] = (select auth.uid()::text));
+-- (casa C2) reemplazar un archivo con upsert necesita INSERT + SELECT + UPDATE
+create policy "reemplazar en mi carpeta" on storage.objects
+  for update to authenticated
+  using (bucket_id = 'geocam' and (storage.foldername(name))[1] = (select auth.uid()::text))
+  with check (bucket_id = 'geocam' and (storage.foldername(name))[1] = (select auth.uid()::text));
+```
+
+### Cómo configurar
+
+1. Crear un proyecto en Supabase y ejecutar [`supabase/schema.sql`](supabase/schema.sql) en el **SQL Editor**.
+2. Copiar `.env.example` como `.env` y pegar los valores de **Project Settings → API Keys**: solo la URL y la
+   **publishable key**. La secret key nunca va en la app. `.env` está en `.gitignore`.
+3. Solo en un proyecto de práctica: **Authentication → Sign In / Providers → Email** → desactivar
+   "Confirm email" para entrar sin confirmar el correo.
+4. Iniciar con caché limpia para que Expo lea el `.env`: `npx expo start -c`.
+
+### Preguntas para sustentar
+
+_(Pendiente: las 4 preguntas de la guía de clase no están en el repositorio. Se responden aquí al tenerlas.)_
 
 ### Auditoría de credenciales
 
