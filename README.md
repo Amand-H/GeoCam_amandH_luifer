@@ -9,6 +9,37 @@ Taller Integrador 2 · **Semana 6: Módulos Nativos y Sensores** · **Semana 7: 
 Construida con **Expo SDK 57**, Expo Router y TypeScript estricto. Todo el acceso al hardware
 está encapsulado en Custom Hooks tipados (sin `any`) que exponen los errores como estado para la UI.
 
+## Semana 8 – GeoCam en la nube
+
+### Auditoría de credenciales
+
+Salidas reales, ejecutadas en la rama `semana-8-supabase` el 19 de octubre de 2026:
+
+```text
+$ git log --all --full-history -- .env
+(sin salida: .env nunca entró al historial)
+
+$ git ls-files | grep -E "^\.env"
+.env.example
+
+$ git check-ignore -v .env
+.gitignore:44:.env	.env
+
+$ git grep -nE "sb_secret_|service_role|SERVICE_ROLE" -- . ':!docs/SEMANA8.md'
+(sin salida)
+
+$ git log --all -p | grep -nE "sb_secret_|service_role" | head
+3312:+2. **Llaves:** en la app solo van `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. **Nunca** una secret key / `service_role` ni la contraseña de la base, con ningún nombre, en ningún archivo.
+3578:+git grep -nE "sb_secret_|service_role|SERVICE_ROLE" -- . ':!docs/SEMANA8.md'   # sin resultados
+3579:+git log --all -p | grep -nE "sb_secret_|service_role" | head   # sin resultados
+```
+
+Las 3 coincidencias del último comando **no son llaves**: son el texto de la guía `docs/SEMANA8.md`
+(commit `68648ff`), que nombra `service_role` y `sb_secret_` para prohibirlos. El cuarto comando excluye ese
+archivo, pero `git log -p` recorre todo el historial y no lo puede excluir. Como verificación extra se buscó en
+todo el historial cualquier valor con forma de llave (`sb_secret_…`, `sb_publishable_…` o un JWT `eyJ…`):
+el único resultado es el marcador `sb_publishable_xxxxxxxx` de `.env.example`. No hay que rotar ninguna llave.
+
 ## Semana 7 – Persistencia offline-first
 
 Las fotos ya no viven en memoria: se guardan en SQLite (`geocam.db`) con **Drizzle ORM** y sus archivos se
