@@ -5,7 +5,7 @@
 **Proyecto:** GeoCam persistente – Taller Integrador 2
 **Herramienta:** Claude Code
 
-> El registro de la Semana 6 está en [`docs/ai-log/AI-LOG-semana-6.md`](docs/ai-log/AI-LOG-semana-6.md).
+> El registro de la Semana 6 está en [`AI-LOG-semana-6.md`](AI-LOG-semana-6.md).
 
 ## 1. Prompts Utilizados
 

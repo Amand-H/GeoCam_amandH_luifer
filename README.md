@@ -110,7 +110,7 @@ npm run db:generate          # = npx drizzle-kit generate
 
 > **Nota:** `drizzle-kit` generó `album_id … REFERENCES albums(id)` **sin** `ON DELETE SET NULL` (la cláusula
 > solo quedó en el snapshot). Por eso `albumsRepo.remove` desvincula las fotos y borra el álbum dentro de una
-> transacción; así funciona igual en la base real. Detalles en el [AI-LOG](AI-LOG.md).
+> transacción; así funciona igual en la base real. Detalles en el [AI-LOG de la Semana 7](docs/ai-log/AI-LOG-semana-7.md).
 
 ### Reto: índice en `created_at` y medición
 
@@ -141,7 +141,7 @@ el número de filas y es mayor cuando se usa `LIMIT` (paginación), porque SQLit
 
 > **Modo WAL:** `db/client.ts` ejecuta `PRAGMA journal_mode = WAL`. Al aplicar la `0002` en el teléfono apareció
 > `database is locked`: conexiones de recargas anteriores de Expo Go con lecturas a medias bloqueaban el `COMMIT`.
-> En WAL los lectores no bloquean a quien escribe. Ver el [AI-LOG](AI-LOG.md).
+> En WAL los lectores no bloquean a quien escribe. Ver el [AI-LOG de la Semana 7](docs/ai-log/AI-LOG-semana-7.md).
 
 ## Funcionalidades (Semana 6)
 
