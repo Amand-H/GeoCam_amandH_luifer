@@ -39,3 +39,8 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Credenciales: NUNCA van a GitHub. Se versiona .env.example, no .env
+.env
+.env.*
+!.env.example
