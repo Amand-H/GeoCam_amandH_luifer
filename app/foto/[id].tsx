@@ -14,6 +14,7 @@ import { Chip } from '@/components/Chip';
 import { PhotoImage } from '@/components/PhotoImage';
 import { colors } from '@/constants/theme';
 import { useAlbums } from '@/hooks/useAlbums';
+import { useCloudSync } from '@/hooks/useCloudSync';
 import { usePhoto } from '@/hooks/usePhoto';
 
 const headerOptions = {
@@ -29,6 +30,7 @@ export default function FotoDetalleScreen() {
   const id = Number(params.id);
   const { photo, isLoading, updateNote, toggleFavorite, moveToAlbum, remove } = usePhoto(id);
   const { albums } = useAlbums();
+  const { uploadOne, isUploading } = useCloudSync();
 
   if (isLoading) {
     return (
@@ -64,6 +66,18 @@ export default function FotoDetalleScreen() {
       },
     ]);
   };
+
+  const handleUpload = async () => {
+    const error = await uploadOne(photo.id);
+    if (error) Alert.alert('No se pudo subir', error);
+  };
+
+  let syncLabel = 'Aún no está en la nube';
+  if (photo.isSynced && photo.syncedAt !== null) {
+    syncLabel = `Sincronizada el ${new Date(photo.syncedAt).toLocaleString('es-CO')}`;
+  } else if (photo.remotePath) {
+    syncLabel = 'Tiene cambios sin subir';
+  }
 
   return (
     <ScrollView style={styles.fill} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -112,6 +126,22 @@ export default function FotoDetalleScreen() {
         {albums.length === 0 && (
           <Text style={styles.muted}>Crea álbumes desde la pestaña Fotos con «+ Álbum».</Text>
         )}
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.label}>Nube</Text>
+        <Text style={styles.muted}>{syncLabel}</Text>
+        <Pressable
+          onPress={handleUpload}
+          disabled={photo.isSynced || isUploading}
+          style={[styles.button, (photo.isSynced || isUploading) && { opacity: 0.4 }]}
+        >
+          {isUploading ? (
+            <ActivityIndicator color="#0a0a0a" />
+          ) : (
+            <Text style={styles.buttonText}>{photo.isSynced ? '☁️ Sincronizada' : '☁️ Subir a la nube'}</Text>
+          )}
+        </Pressable>
       </View>
 
       <Pressable onPress={handleDelete} style={[styles.button, styles.deleteButton]}>

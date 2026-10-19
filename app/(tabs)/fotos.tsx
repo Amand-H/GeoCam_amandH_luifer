@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AlbumNameModal } from '@/components/AlbumNameModal';
 import { Chip } from '@/components/Chip';
 import { PhotoImage } from '@/components/PhotoImage';
+import { SyncBadge } from '@/components/SyncBadge';
 import { colors } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { useAlbums } from '@/hooks/useAlbums';
@@ -88,6 +89,7 @@ export default function FotosScreen() {
           <PhotoImage uri={item.uri} style={styles.thumb} />
           <Text style={styles.badgeLeft}>{item.coords ? '📍' : '∅'}</Text>
           {item.favorite && <Text style={styles.badgeRight}>★</Text>}
+          <SyncBadge photo={item} style={styles.badgeBottom} />
         </View>
         <Text style={styles.album} numberOfLines={1}>
           {item.albumName ?? 'Sin álbum'}
@@ -229,6 +231,7 @@ const styles = StyleSheet.create({
   thumb: { width: '100%', aspectRatio: 1, borderRadius: 8 },
   badgeLeft: { position: 'absolute', left: 6, top: 6, fontSize: 14 },
   badgeRight: { position: 'absolute', right: 6, top: 4, fontSize: 18, color: colors.warning },
+  badgeBottom: { position: 'absolute', right: 6, bottom: 6 },
   album: { color: colors.text, fontWeight: '600', fontSize: 13 },
   note: { color: colors.textMuted, fontSize: 12 },
   empty: { color: colors.textMuted, textAlign: 'center', marginTop: 48, paddingHorizontal: 24 },

@@ -25,3 +25,24 @@ export function deletePhotoFile(uri: string): void {
     if (__DEV__) console.warn('[photoFiles] no se pudo borrar', uri, e);
   }
 }
+
+const CONTENT_TYPES: Record<string, string> = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.heic': 'image/heic',
+  '.webp': 'image/webp',
+};
+
+/**
+ * Bytes de la foto para subirla. ArrayBuffer y no Blob/FormData: en React Native
+ * esos dos terminan en archivos de 0 bytes en Supabase Storage.
+ */
+export async function readPhotoBytes(uri: string): Promise<{ bytes: ArrayBuffer; contentType: string }> {
+  const file = new File(uri);
+  // Fotos viejas guardadas con URI de caché (antes de la C5 de la Semana 7) pueden haber desaparecido
+  if (!file.exists) throw new Error('El archivo de esta foto ya no existe en el teléfono');
+  const bytes = await file.arrayBuffer();
+  const contentType = CONTENT_TYPES[file.extension.toLowerCase()] ?? 'image/jpeg';
+  return { bytes, contentType };
+}

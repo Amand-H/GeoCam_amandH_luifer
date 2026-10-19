@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGeoLocation } from '@/hooks/useGeoLocation';
 import { useShake } from '@/hooks/useShake';
 import { PhotoImage } from '@/components/PhotoImage';
+import { SyncBadge } from '@/components/SyncBadge';
 import { StatusBanner } from '@/components/StatusBanner';
 import { usePhotos } from '@/hooks/usePhotos';
 import { colors } from '@/constants/theme';
@@ -135,6 +136,7 @@ export default function MapaScreen() {
                     { borderColor: item.source === 'gallery' ? colors.gallery : colors.text },
                   ]}
                 />
+                <SyncBadge photo={item} style={styles.listBadge} />
               </Pressable>
             )}
           />
@@ -170,4 +172,5 @@ const styles = StyleSheet.create({
   listTitle: { color: colors.text, fontWeight: '700' },
   muted: { color: colors.textMuted, fontSize: 12 },
   listThumb: { width: 64, height: 64, borderRadius: 8, borderWidth: 2 },
+  listBadge: { position: 'absolute', right: 4, bottom: 2, fontSize: 11 },
 });
