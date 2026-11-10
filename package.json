@@ -3,7 +3,11 @@
   "version": "1.0.0",
   "main": "expo-router/entry",
   "dependencies": {
+    "@ai-sdk/react": "^4.0.170",
+    "@stardazed/streams-text-encoding": "^1.0.2",
     "@supabase/supabase-js": "^2.118.0",
+    "@ungap/structured-clone": "^1.4.0",
+    "ai": "^7.0.166",
     "babel-preset-expo": "~57.0.0",
     "drizzle-orm": "^0.45.4",
     "expo": "~57.0.30",
@@ -11,10 +15,11 @@
     "expo-constants": "~57.0.20",
     "expo-crypto": "~57.0.4",
     "expo-file-system": "~57.0.7",
+    "expo-image-manipulator": "~57.0.22",
     "expo-image-picker": "~57.0.20",
     "expo-linking": "~57.0.13",
     "expo-location": "~57.0.21",
-    "expo-network": "~57.0.2",
+    "expo-network": "~57.0.3",
     "expo-router": "~57.0.28",
     "expo-secure-store": "~57.0.4",
     "expo-sensors": "~57.0.3",
@@ -24,10 +29,12 @@
     "react-native": "0.86.3",
     "react-native-maps": "1.27.2",
     "react-native-safe-area-context": "~5.7.0",
-    "react-native-screens": "~4.26.0"
+    "react-native-screens": "~4.26.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "@types/ungap__structured-clone": "^1.2.0",
     "babel-plugin-inline-import": "^3.0.0",
     "drizzle-kit": "^0.31.11",
     "eslint": "^9.39.5",

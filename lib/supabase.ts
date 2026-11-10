@@ -12,6 +12,9 @@ if (!supabaseUrl || !supabaseKey) {
   );
 }
 
+export const SUPABASE_URL = supabaseUrl;
+export const SUPABASE_PUBLISHABLE_KEY = supabaseKey;
+
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
     storage: secureStorage,
