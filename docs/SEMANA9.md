@@ -1,5 +1,7 @@
 # Instrucciones para Claude Code — Semana 9: TanStack Query y sincronización offline-first
 
+> ⚠️ **El proyecto está en SDK 58; usar `https://docs.expo.dev/versions/v58.0.0/`** (React Native 0.88 con la API de tipos estricta). Donde este archivo diga SDK 57 o `v57.0.0`, leer SDK 58. Ver `docs/UPGRADE-SDK58.md`.
+
 > **Cómo usar este archivo:** guárdalo en el repo como `docs/SEMANA9.md`, descomprime el zip `s9-geocam-sync.zip` en `C:\Users\amand\OneDrive\Escritorio\AMAND_PRACTICA\referencia-s9\` (FUERA del repo) y en Claude Code pega:
 >
 > ```
