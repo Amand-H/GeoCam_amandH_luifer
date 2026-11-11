@@ -19,10 +19,12 @@ onlineManager.setEventListener((setOnline) => {
   let initialised = false;
   const subscription = Network.addNetworkStateListener((state) => {
     initialised = true;
+    if (__DEV__) console.log('[red] cambio', JSON.stringify(state), '→ online:', isOnlineState(state));
     setOnline(isOnlineState(state));
   });
   Network.getNetworkStateAsync()
     .then((state) => {
+      if (__DEV__) console.log('[red] inicial', JSON.stringify(state), '→ online:', isOnlineState(state));
       if (!initialised) setOnline(isOnlineState(state));
     })
     .catch(() => {});

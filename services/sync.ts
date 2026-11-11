@@ -215,6 +215,7 @@ export async function push(userId: string): Promise<PushResult> {
 // ---------------------------------------------------------------- CICLO
 
 async function runSync(userId: string): Promise<SyncResult> {
+  if (__DEV__) console.log('[sync] inicia ciclo', userId);
   let pulled = 0;
   let pushed = 0;
   let last: PushResult = { pushed: 0, failed: 0, sinArchivo: 0, errors: [] };
@@ -239,7 +240,7 @@ async function runSync(userId: string): Promise<SyncResult> {
     if (last.pushed === 0 || remaining <= last.failed) break;
   }
 
-  return {
+  const result: SyncResult = {
     pulled,
     pushed,
     failed: last.failed,
@@ -247,6 +248,8 @@ async function runSync(userId: string): Promise<SyncResult> {
     errors: pullError ? [pullError, ...last.errors] : last.errors,
     finishedAt: Date.now(),
   };
+  if (__DEV__) console.log('[sync] ciclo terminado', JSON.stringify(result));
+  return result;
 }
 
 // Un solo ciclo a la vez: si llega otra petición mientras hay uno en curso, se reutiliza su promesa

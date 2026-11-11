@@ -112,10 +112,12 @@ export const photosRepo = {
    * No toca updatedAt: si lo hiciera, la foto nunca quedaría al día.
    */
   markSynced(id: number, ownerId: string, remotePath: string, syncedAt: Date) {
+    // .run(): una consulta de Drizzle sin await ni .run() nunca se ejecuta (QueryPromise es perezosa)
     return db
       .update(photos)
       .set({ remotePath, syncedAt })
-      .where(ownPhoto(id, ownerId));
+      .where(ownPhoto(id, ownerId))
+      .run();
   },
 
   // ---------- Semana 9: bajada desde la nube ----------
