@@ -2,10 +2,12 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { db } from '@/db/client';
 import migrations from '@/drizzle/migrations';
 import { colors } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { queryClient, useAppFocusManager } from '@/lib/queryClient';
 import { useClaimOrphans } from '@/hooks/useClaimOrphans';
 import { useSyncBootstrap } from '@/hooks/useSyncBootstrap';
 
@@ -33,6 +35,8 @@ function RootNavigator() {
 }
 
 export default function RootLayout() {
+  // TanStack Query se entera de cuándo la app vuelve a primer plano (antes de cualquier return)
+  useAppFocusManager();
   // Única excepción a las capas: aplicar las migraciones antes de montar cualquier pantalla
   const { success, error } = useMigrations(db, migrations);
   // Fotos anteriores a la migración 0003: reciben clientId y updatedAt
@@ -59,12 +63,12 @@ export default function RootLayout() {
   }
 
   return (
-    <>
+    <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <RootNavigator />
       </AuthProvider>
       <StatusBar style="light" />
-    </>
+    </QueryClientProvider>
   );
 }
 

@@ -4,6 +4,7 @@
   "main": "expo-router/entry",
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",
+    "@tanstack/react-query": "^5.107.1",
     "babel-preset-expo": "~58.0.0",
     "drizzle-orm": "^0.45.4",
     "expo": "~58.0.23",
