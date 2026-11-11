@@ -1,99 +1,10 @@
-import { photosRepo } from '@/db/repositories/photos';
 import { supabase } from '@/lib/supabase';
-import { readPhotoBytes } from '@/services/photoFiles';
-import type { CloudPhoto, GeoPhoto } from '@/types/geo';
+import { BUCKET, SIGNED_URL_SECONDS } from '@/services/cloudStorage';
+import type { CloudPhoto } from '@/types/geo';
 
-// Única capa que conoce el bucket y la tabla remota
-const BUCKET = 'geocam';
-const SIGNED_URL_SECONDS = 3600;
+// Lectura de la pestaña Nube (C2). La subida y la bajada a SQLite viven en services/sync.ts.
 
-/**
- * La primera carpeta debe ser el id del usuario: es lo que exigen las políticas RLS del bucket.
- * La ruta depende solo del clientId, así que repetir la subida reemplaza el archivo en vez de duplicarlo.
- */
-function storagePathFor(userId: string, clientId: string): string {
-  return `${userId}/${clientId}.jpg`;
-}
-
-/**
- * Sube o actualiza una foto. Se puede repetir sin duplicar nada:
- * 1. El archivo solo se sube si la foto nunca llegó al bucket (upsert sobre una ruta fija).
- * 2. La fila se escribe con upsert por client_id: una foto editada actualiza su fila.
- * 3. Si la fila falla y el archivo se subió en este intento, se borra para no dejar huérfanos.
- * 4. markSynced solo al final, cuando todo salió bien.
- */
-export async function uploadPhoto(photo: GeoPhoto, userId: string): Promise<void> {
-  if (!photo.clientId) throw new Error('La foto aún no tiene identificador de sincronización');
-
-  let path = photo.remotePath;
-  let uploadedNow = false;
-
-  if (!path) {
-    path = storagePathFor(userId, photo.clientId);
-    const { bytes, contentType } = await readPhotoBytes(photo.uri);
-    const { error: uploadError } = await supabase.storage
-      .from(BUCKET)
-      .upload(path, bytes, { contentType, upsert: true });
-    if (uploadError) throw new Error(`No se pudo subir el archivo: ${uploadError.message}`);
-    uploadedNow = true;
-  }
-
-  // user_id no se envía: la columna toma auth.uid() por defecto y RLS comprueba que coincida
-  const { error: rowError } = await supabase.from('photos').upsert(
-    {
-      client_id: photo.clientId,
-      storage_path: path,
-      latitude: photo.coords?.latitude ?? null,
-      longitude: photo.coords?.longitude ?? null,
-      note: photo.note,
-      favorite: photo.favorite,
-      source: photo.source,
-      taken_at: new Date(photo.createdAt).toISOString(),
-      updated_at: new Date(photo.updatedAt ?? photo.createdAt).toISOString(),
-    },
-    { onConflict: 'client_id' }
-  );
-
-  if (rowError) {
-    if (uploadedNow) {
-      // Compensación: sin fila, el archivo quedaría huérfano en el bucket
-      const { error: removeError } = await supabase.storage.from(BUCKET).remove([path]);
-      if (removeError && __DEV__) console.warn('[cloud] no se pudo borrar el archivo huérfano', path, removeError);
-    }
-    throw new Error(`No se pudo guardar la foto en la nube: ${rowError.message}`);
-  }
-
-  await photosRepo.markSynced(photo.id, userId, path);
-}
-
-export interface RemoteRef {
-  clientId: string | null;
-  remotePath: string | null;
-}
-
-/**
- * Borra de la nube primero las filas y luego los archivos.
- * Si fallan las filas no se toca ningún archivo (la foto sigue completa en la nube).
- * Si fallan los archivos, las filas ya no están: reintentar es seguro porque borrar
- * una fila que no existe no da error y vuelve a intentar los archivos.
- */
-export async function deleteRemoteMany(refs: RemoteRef[]): Promise<void> {
-  const synced = refs.filter((r): r is { clientId: string; remotePath: string } => !!r.clientId && !!r.remotePath);
-  if (synced.length === 0) return;
-
-  const { error: rowError } = await supabase
-    .from('photos')
-    .delete()
-    .in('client_id', synced.map((r) => r.clientId));
-  if (rowError) throw new Error(`No se pudo borrar de la nube: ${rowError.message}`);
-
-  const { error: fileError } = await supabase.storage.from(BUCKET).remove(synced.map((r) => r.remotePath));
-  if (fileError) throw new Error(`No se pudo borrar el archivo de la nube: ${fileError.message}`);
-}
-
-export function deleteRemote(photo: RemoteRef): Promise<void> {
-  return deleteRemoteMany([photo]);
-}
+export const CLOUD_PAGE_SIZE = 12;
 
 interface PhotoRow {
   client_id: string;
@@ -106,15 +17,43 @@ interface PhotoRow {
   taken_at: string;
 }
 
-/** Fotos del usuario en la nube (RLS ya filtra por user_id) con URLs firmadas pedidas en un solo lote. */
-export async function listRemote(): Promise<CloudPhoto[]> {
-  const { data, error } = await supabase
+export interface CloudPage {
+  items: CloudPhoto[];
+  /** taken_at de la última foto de la página; null si no hay más. */
+  nextCursor: string | null;
+}
+
+/** % y _ son comodines de ILIKE: se escapan para buscar el texto tal cual lo escribió el usuario. */
+function escapeLike(term: string): string {
+  return term.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
+/**
+ * Una página de fotos del usuario en la nube (RLS ya filtra por user_id), de la más reciente a la
+ * más antigua. Paginación por CURSOR (`taken_at < cursor`), no por range(): si llega una foto nueva
+ * mientras se recorre la lista, las páginas siguientes no se corren ni repiten filas.
+ * Las URLs firmadas se piden en un solo lote por página (createSignedUrls).
+ */
+export async function listRemotePage({
+  cursor,
+  search,
+}: {
+  cursor: string | null;
+  search: string;
+}): Promise<CloudPage> {
+  let query = supabase
     .from('photos')
-    .select('*')
+    .select('client_id, storage_path, latitude, longitude, note, favorite, source, taken_at')
+    .is('deleted_at', null) // C1: las lápidas no se muestran
     .order('taken_at', { ascending: false })
-    .returns<PhotoRow[]>();
+    .limit(CLOUD_PAGE_SIZE);
+  if (cursor) query = query.lt('taken_at', cursor);
+  const term = search.trim();
+  if (term) query = query.ilike('note', `%${escapeLike(term)}%`);
+
+  const { data, error } = await query.returns<PhotoRow[]>();
   if (error) throw new Error(`No se pudieron cargar las fotos de la nube: ${error.message}`);
-  if (data.length === 0) return [];
+  if (data.length === 0) return { items: [], nextCursor: null };
 
   const { data: signed, error: signError } = await supabase.storage.from(BUCKET).createSignedUrls(
     data.map((row) => row.storage_path),
@@ -123,7 +62,7 @@ export async function listRemote(): Promise<CloudPhoto[]> {
   if (signError) throw new Error(`No se pudieron firmar las URLs: ${signError.message}`);
   const urlByPath = new Map(signed.map((s) => [s.path, s.error ? null : s.signedUrl]));
 
-  return data.map((row) => ({
+  const items = data.map((row) => ({
     clientId: row.client_id,
     storagePath: row.storage_path,
     url: urlByPath.get(row.storage_path) ?? null,
@@ -136,6 +75,9 @@ export async function listRemote(): Promise<CloudPhoto[]> {
     source: row.source,
     takenAt: new Date(row.taken_at).getTime(),
   }));
+
+  // Página incompleta = no hay más. Si no, el cursor es el taken_at (texto de Postgres) de la última
+  return { items, nextCursor: data.length < CLOUD_PAGE_SIZE ? null : data[data.length - 1].taken_at };
 }
 
 /**
@@ -157,11 +99,4 @@ export function subscribeToRemoteChanges(userId: string, onChange: () => void): 
   return () => {
     supabase.removeChannel(channel);
   };
-}
-
-/** URL temporal para mostrar una foto del bucket privado. */
-export async function signedUrl(path: string): Promise<string> {
-  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, SIGNED_URL_SECONDS);
-  if (error) throw new Error(error.message);
-  return data.signedUrl;
 }

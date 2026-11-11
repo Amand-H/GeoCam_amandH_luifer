@@ -2,10 +2,12 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { db } from '@/db/client';
 import migrations from '@/drizzle/migrations';
 import { colors } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { persistOptions, queryClient, useAppFocusManager } from '@/lib/queryClient';
 import { useClaimOrphans } from '@/hooks/useClaimOrphans';
 import { useSyncBootstrap } from '@/hooks/useSyncBootstrap';
 
@@ -24,6 +26,17 @@ function RootNavigator() {
         <Stack.Screen name="(tabs)" />
         {/* El detalle completa sus opciones de cabecera (colores del tema) con su propio <Stack.Screen> */}
         <Stack.Screen name="foto/[id]" options={{ headerShown: true, title: 'Foto' }} />
+        {/* Semana 9 (C4): estado de la sincronización, se abre desde el indicador */}
+        <Stack.Screen
+          name="sync"
+          options={{
+            headerShown: true,
+            title: 'Sincronización',
+            headerTransparent: false, // SDK 58: en iOS 26+ sería transparente por defecto
+            headerStyle: { backgroundColor: colors.background },
+            headerTintColor: colors.text,
+          }}
+        />
       </Stack.Protected>
       <Stack.Protected guard={!session}>
         <Stack.Screen name="login" />
@@ -33,6 +46,8 @@ function RootNavigator() {
 }
 
 export default function RootLayout() {
+  // TanStack Query se entera de cuándo la app vuelve a primer plano (antes de cualquier return)
+  useAppFocusManager();
   // Única excepción a las capas: aplicar las migraciones antes de montar cualquier pantalla
   const { success, error } = useMigrations(db, migrations);
   // Fotos anteriores a la migración 0003: reciben clientId y updatedAt
@@ -59,12 +74,12 @@ export default function RootLayout() {
   }
 
   return (
-    <>
+    <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
       <AuthProvider>
         <RootNavigator />
       </AuthProvider>
       <StatusBar style="light" />
-    </>
+    </PersistQueryClientProvider>
   );
 }
 

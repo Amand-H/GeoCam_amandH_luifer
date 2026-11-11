@@ -21,6 +21,11 @@ function ownPhoto(id: number, ownerId: string) {
   return and(eq(photos.id, id), ownedBy(ownerId));
 }
 
+/** C1: lo que ve la UI. Las fotos marcadas como borradas solo existen para avisarle a la nube. */
+function visibleTo(ownerId: string) {
+  return and(ownedBy(ownerId), isNull(photos.deletedAt));
+}
+
 /** Fotos con el nombre de su álbum. La tabla principal sigue siendo photos (la que escucha useLiveQuery). */
 function selectWithAlbum() {
   return db
@@ -32,17 +37,17 @@ function selectWithAlbum() {
 export const photosRepo = {
   /** Consulta sin ejecutar: la ejecuta useLiveQuery para mantenerse reactiva. */
   listQuery(ownerId: string) {
-    return selectWithAlbum().where(ownedBy(ownerId)).orderBy(desc(photos.createdAt));
+    return selectWithAlbum().where(visibleTo(ownerId)).orderBy(desc(photos.createdAt));
   },
 
   withLocationQuery(ownerId: string) {
     return selectWithAlbum()
-      .where(and(ownedBy(ownerId), isNotNull(photos.latitude)))
+      .where(and(visibleTo(ownerId), isNotNull(photos.latitude)))
       .orderBy(desc(photos.createdAt));
   },
 
   filteredQuery(ownerId: string, { search, albumId = null, onlyFavorites = false }: PhotoFilters) {
-    const conditions: SQL[] = [ownedBy(ownerId)];
+    const conditions: SQL[] = [ownedBy(ownerId), isNull(photos.deletedAt)];
     const term = search?.trim();
     if (term) conditions.push(like(photos.note, `%${term}%`));
     if (albumId === 'none') conditions.push(isNull(photos.albumId));
@@ -55,10 +60,12 @@ export const photosRepo = {
   },
 
   detailQuery(id: number, ownerId: string) {
-    return selectWithAlbum().where(ownPhoto(id, ownerId)).limit(1);
+    return selectWithAlbum()
+      .where(and(ownPhoto(id, ownerId), isNull(photos.deletedAt)))
+      .limit(1);
   },
 
-  /** Pendientes de subir, de la más antigua a la más reciente. */
+  /** Pendientes de subir, de la más antigua a la más reciente. Incluye las marcadas como borradas (C1). */
   pendingForUpload(ownerId: string) {
     return selectWithAlbum()
       .where(and(ownedBy(ownerId), isPending()))
@@ -67,23 +74,22 @@ export const photosRepo = {
   },
 
   /**
-   * Consulta sin ejecutar para useLiveQuery: el botón Sincronizar se actualiza solo.
-   * Devuelve uri y remotePath (no un COUNT) porque saber si el archivo existe no lo puede responder SQLite.
+   * Consulta sin ejecutar para useLiveQuery: el indicador y la pantalla de sincronización se actualizan solos.
+   * Devuelve filas (no un COUNT) porque saber si el archivo existe no lo puede responder SQLite.
    */
   pendingQuery(ownerId: string) {
     return db
-      .select({ id: photos.id, uri: photos.uri, remotePath: photos.remotePath })
+      .select({
+        id: photos.id,
+        uri: photos.uri,
+        remotePath: photos.remotePath,
+        note: photos.note,
+        createdAt: photos.createdAt,
+        deletedAt: photos.deletedAt,
+      })
       .from(photos)
-      .where(and(ownedBy(ownerId), isPending()));
-  },
-
-  /** Lo necesario para borrar todo: el archivo local y, si se subió, su identidad en la nube. */
-  allUris(ownerId: string) {
-    return db
-      .select({ uri: photos.uri, clientId: photos.clientId, remotePath: photos.remotePath })
-      .from(photos)
-      .where(ownedBy(ownerId))
-      .all();
+      .where(and(ownedBy(ownerId), isPending()))
+      .orderBy(asc(photos.createdAt));
   },
 
   findById(id: number, ownerId: string) {
@@ -106,12 +112,47 @@ export const photosRepo = {
       .where(ownPhoto(id, ownerId));
   },
 
-  /** Solo registra la sincronización. No toca updatedAt: si lo hiciera, la foto nunca quedaría al día. */
-  markSynced(id: number, ownerId: string, remotePath: string) {
+  /**
+   * Solo registra la sincronización. syncedAt = la versión (updatedAt) que se subió, nunca "ahora":
+   * si el usuario editó durante la subida, updatedAt > syncedAt y la foto sigue pendiente.
+   * No toca updatedAt: si lo hiciera, la foto nunca quedaría al día.
+   */
+  markSynced(id: number, ownerId: string, remotePath: string, syncedAt: Date) {
+    // .run(): una consulta de Drizzle sin await ni .run() nunca se ejecuta (QueryPromise es perezosa)
     return db
       .update(photos)
-      .set({ remotePath, syncedAt: new Date() })
-      .where(ownPhoto(id, ownerId));
+      .set({ remotePath, syncedAt })
+      .where(ownPhoto(id, ownerId))
+      .run();
+  },
+
+  // ---------- Semana 9: bajada desde la nube ----------
+
+  /** La misma foto en este teléfono (identidad compartida), solo si es del usuario. */
+  findByClientId(clientId: string, ownerId: string) {
+    return db
+      .select()
+      .from(photos)
+      .where(and(eq(photos.clientId, clientId), ownedBy(ownerId)))
+      .get();
+  },
+
+  /** Foto que llegó de la nube: nace sincronizada (syncedAt = updatedAt remoto) y con su dueño. */
+  insertFromRemote(data: Omit<NewPhoto, 'id' | 'ownerId'>, ownerId: string) {
+    return db
+      .insert(photos)
+      .values({ ...data, ownerId })
+      .returning()
+      .get();
+  },
+
+  /** Aplica en local una versión más nueva de la nube. Nunca usa la hora actual. */
+  applyRemote(
+    id: number,
+    ownerId: string,
+    changes: { note: string | null; favorite: boolean; updatedAt: Date; syncedAt: Date }
+  ) {
+    return db.update(photos).set(changes).where(ownPhoto(id, ownerId)).run();
   },
 
   /**
@@ -142,11 +183,33 @@ export const photosRepo = {
     return db.update(photos).set({ ownerId }).where(isNull(photos.ownerId)).run();
   },
 
-  remove(id: number, ownerId: string) {
-    return db.delete(photos).where(ownPhoto(id, ownerId));
+  // ---------- Semana 9 (C1): borrado lógico ----------
+
+  /**
+   * Borrar = marcar. Funciona sin conexión: deletedAt y updatedAt = ahora, así la foto desaparece
+   * de la UI y queda pendiente; push le avisa a la nube y después la borra de verdad (purge).
+   */
+  markDeleted(id: number, ownerId: string) {
+    const now = new Date();
+    return db
+      .update(photos)
+      .set({ deletedAt: now, updatedAt: now })
+      .where(and(ownPhoto(id, ownerId), isNull(photos.deletedAt)))
+      .run();
   },
 
-  clearAll(ownerId: string) {
-    return db.delete(photos).where(ownedBy(ownerId));
+  /** "Borrar todo" (shake): el mismo borrado lógico para todas las fotos visibles del usuario. */
+  markAllDeleted(ownerId: string) {
+    const now = new Date();
+    return db
+      .update(photos)
+      .set({ deletedAt: now, updatedAt: now })
+      .where(visibleTo(ownerId))
+      .run();
+  },
+
+  /** Borrado físico de la fila local. Solo lo usa la sincronización, cuando la nube ya se enteró. */
+  purge(id: number, ownerId: string) {
+    return db.delete(photos).where(ownPhoto(id, ownerId)).run();
   },
 };

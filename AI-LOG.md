@@ -1,109 +1,98 @@
 # Registro de Auditoría de IA (AI-LOG)
 
 **Estudiante(s):** Luis Nuñez, Amand Herrera
-**Semana:** 8
-**Proyecto:** GeoCam en la nube – Taller Integrador 2
+**Semana:** 9
+**Proyecto:** GeoCam sincronizada (TanStack Query + sincronización offline-first) – Taller Integrador 2
 **Herramienta:** Claude Code
 
-> Registros anteriores: [Semana 7](docs/ai-log/AI-LOG-semana-7.md) · [Semana 6](docs/ai-log/AI-LOG-semana-6.md).
+> Registros anteriores: [Semana 8](docs/ai-log/AI-LOG-semana-8.md) · [Semana 7](docs/ai-log/AI-LOG-semana-7.md) ·
+> [Semana 6](docs/ai-log/AI-LOG-semana-6.md).
 
 ## 1. Prompts Utilizados
 
-- Se le entregó a Claude Code un archivo de instrucciones por fases (`docs/SEMANA8.md`) construido a partir de
-  la guía de la Semana 8, con el estado real del repositorio (SDK 57, rutas en `app/`, sin NativeWind,
-  `.env` todavía sin ignorar), las reglas obligatorias (capas, solo publishable key, SecureStore por
-  fragmentos, `Stack.Protected`, `ArrayBuffer`, RLS siempre activo, `removeChannel`) y el plan de
-  migraciones `0003`/`0004`. El prompt fue el que trae el propio archivo: *"Lee docs/SEMANA8.md completo,
-  AGENTS.md y docs/SEMANA7.md. Ejecuta las fases en orden, una a la vez. Al terminar cada fase: corre
-  `npx tsc --noEmit` y `npx expo lint`, haz el commit indicado y DETENTE en cada 🛑…"*.
-- En los puntos 🛑 se respondió tras hacer la parte manual: pegar la URL y la publishable key en `.env` y
-  desactivar "Confirm email"; probar registro, sesión persistente y cierre de sesión; ejecutar el SQL en el
-  proyecto `geocam`; verificar que las fotos anteriores seguían tras la migración `0003`; subir una foto y
-  comprobar en el panel que pesaba 1.442.220 bytes y que su fila tenía el mismo `client_id`.
-- Se indicó una restricción adicional: *"Solo usa el remoto `mio`, nunca `origin`"* (todos los push fueron a
-  `mio/semana-8-supabase`).
-- Cuando Sincronizar falló con 3 fotos, se pidió **diagnosticar antes de cambiar código** (registrar uri,
-  `File.exists` y ubicación de cada foto) y, según el resultado, corregir la lectura o tratar las fotos
-  "sin archivo". Se pegó la salida real del log del teléfono.
-- Por último se pidió continuar con las fases 7 a 11 sin detenerse en cada 🛑; las pruebas manuales de esas
-  fases se hacen al final.
+- Se le entregó a Claude Code `docs/SEMANA9.md`, un archivo de instrucciones por fases construido a partir de la
+  guía de la Semana 9. Incluía el estado real del repositorio después de la Semana 8, el diseño "no negociable"
+  (SQLite fuente de verdad, `clientId`, cursor con `server_updated_at`, gana el último cambio, bajar antes de
+  subir) y el plan de migraciones `0005`/`0006`. El prompt fue: *"Lee docs/SEMANA9.md completo, AGENTS.md,
+  docs/SEMANA8.md y el README de ../referencia-s9/geocam-sync. […] Ejecuta las fases en orden, una a la vez. Al
+  terminar cada fase: corre `npx tsc --noEmit` y `npx expo lint`, restaura tsconfig.json si Expo lo reescribió,
+  haz el commit indicado y DETENTE en cada 🛑. Solo el remoto `mio`, nunca `origin`."*
+- Se usó como guía la solución del profesor (`../referencia-s9/geocam-sync`), pidiendo **adaptarla** (aquí hay
+  `ownerId`, `StyleSheet` en vez de NativeWind y otra base local) y no copiar su `package.json` ni su base.
+- Antes de empezar se pidió guardar la Semana 10 (a medias) en su rama y crear `semana-9-sync` desde `main`.
+  Después se pidió sacar `docs/SEMANA10.md` de ese commit (contiene el texto "AIza" y haría fallar la auditoría
+  de la Semana 10) y subir la rama a `mio` como respaldo.
+- A mitad de semana Expo Go se actualizó y dejó de abrir SDK 57. Se pasó a Claude Code `docs/UPGRADE-SDK58.md`
+  (actualizar `main` una sola vez y rebasar `semana-9-sync` encima). Ver la sección "Actualización a SDK 58".
+- En los 🛑 se respondió tras ejecutar el SQL en Supabase (`semana9.sql`, `semana9-borrados.sql`) y probar en el
+  teléfono. Cuando la sincronización "no sincronizaba" se pidió diagnosticar primero y se pegaron los registros
+  de Metro (`[red]`, `[sync]`).
+- Las pruebas con **dos teléfonos** (T7.2, T7.3 y el borrado en A → B) no se pudieron hacer: los teléfonos no
+  estaban en la misma red y había que entregar. Se pidió omitirlas y seguir; quedan pendientes en la matriz.
 
 ## 2. Código Generado vs. Código Modificado
 
-- **¿Qué generó la IA?:** toda la integración con Supabase, respetando las capas
-  (pantalla → hook → servicio/repositorio → Supabase o Drizzle):
-  - `lib/secureStorage.ts` y `lib/supabase.ts`; `context/AuthContext.tsx` y `app/login.tsx`;
-    `Stack.Protected` en `app/_layout.tsx`.
-  - `supabase/schema.sql` (copiado tal cual de la guía de instrucciones).
-  - `services/cloudPhotos.ts` (único archivo que conoce el bucket y la tabla remota), `services/network.ts`,
-    `services/orphans.ts`; hooks `useCloudSync`, `useCloudPhotos`, `useSyncBootstrap`, `useClaimOrphans`,
-    `useOwnerId`; pestaña `app/(tabs)/nube.tsx` y componente `SyncBadge`.
-  - Las migraciones `0003` y `0004` se generaron con `npm run db:generate`; ninguna se editó a mano.
-- **¿Qué se modificó o se decidió distinto respecto al código base de la guía?:**
-  - **Login con `StyleSheet` en vez de NativeWind:** el proyecto no usa NativeWind; se usaron `StyleSheet` y
-    `constants/theme.ts` para no agregar una dependencia solo para una pantalla.
-  - **Políticas `UPDATE` agregadas** en `public.photos` y en `storage.objects`: el `upsert` de la fila
-    necesita `UPDATE` cuando la fila ya existe, y reemplazar un archivo con `upsert: true` necesita
-    INSERT + SELECT + UPDATE en el bucket. La guía base solo tenía select/insert/delete.
-  - **Orden archivo → fila con borrado compensatorio:** si la fila falla y el archivo se subió en ese mismo
-    intento, se borra del bucket antes de relanzar el error, para no dejar archivos huérfanos.
-  - **Borrado remoto antes que el local:** primero la fila remota, luego el archivo del bucket, luego el
-    registro y el archivo locales. Sin conexión, o si falla la parte remota, no se borra nada local; si se
-    borrara primero lo local, la foto quedaría en la nube sin nada en el teléfono que permita borrarla.
-  - **`markSynced` no toca `updatedAt`:** si lo hiciera, `synced_at >= updated_at` dejaría de distinguir una
-    foto editada de una al día.
-  - **`claimOrphans`:** las filas sin dueño (anteriores a la `0004`) pasan al primer usuario que inicia
-    sesión en el teléfono, una sola vez (marca `geocam.orphansClaimed` en SecureStore).
-  - **Lectura del archivo con `File.arrayBuffer()`** (API nueva de `expo-file-system`) en vez de
-    `fetch(uri).then(r => r.arrayBuffer())`. Sigue siendo `ArrayBuffer` (nunca `Blob` ni `FormData`), y
-    además permite comprobar `File.exists` antes de leer (ver punto 3: `fetch` habría subido 14 bytes).
-  - **Realtime con dos escuchas:** `event: '*'` filtrado por `user_id` y otra solo para `DELETE` sin filtro,
-    porque Supabase no aplica filtros a los eventos `DELETE` (el registro borrado solo trae la llave
-    primaria). La escucha no expone datos: solo dispara una recarga, y la recarga pasa por RLS.
-  - **`allUris` devuelve también `clientId` y `remotePath`**, porque "borrar todo" necesita saber qué fotos
-    están en la nube.
+- **¿Qué generó la IA?:** toda la sincronización, adaptando la referencia del profesor:
+  - `supabase/semana9.sql` (columna `server_updated_at`, trigger e índice) y `supabase/semana9-borrados.sql`
+    (`deleted_at`).
+  - `lib/queryClient.ts` (`QueryClient`, `onlineManager` con `expo-network`, `useAppFocusManager`, `useIsOnline` y
+    la caché persistente con `expo-sqlite/kv-store`).
+  - Migraciones `0005` (`sync_meta`) y `0006` (`photos.deleted_at`) con `npm run db:generate`;
+    `db/repositories/syncMeta.ts` y los métodos nuevos de `photosRepo` (`findByClientId`, `insertFromRemote`,
+    `applyRemote`, `markSynced` con la versión subida, `markDeleted`, `markAllDeleted`, `purge`).
+  - `services/sync.ts` (`remoteWins` e `isPending` puras, `pull`, `push`, `syncAll`), `services/cloudStorage.ts`
+    y `downloadPhotoFile` en `services/photoFiles.ts`.
+  - `hooks/useSync.ts`, `components/SyncStatus.tsx`, la pantalla `app/sync.tsx`, el feed paginado de la Nube
+    (`listRemotePage`, `hooks/useCloudPhotos.ts` con `useInfiniteQuery`, `hooks/useDebouncedValue.ts`).
+- **¿Qué tuvimos que corregir o cambiar respecto a la referencia o a la guía?:**
+  - **No se creó la política `"editar las mías"`** que trae el SQL de la referencia: la política UPDATE ya
+    existía desde la Semana 8 como `"actualizar las mías"`. Se comprobó en `supabase/schema.sql` y se dejó un
+    comentario en `semana9.sql`.
+  - **Una sola subida.** La subida de la Semana 8 (`uploadPhoto` + `useCloudSync`) se unificó en `push()`. Se
+    mantuvo la lectura con `File` + `ArrayBuffer` y el criterio de "sin archivo" de la Semana 8; el botón
+    **Sincronizar (N)** se reemplazó por el indicador `SyncStatus` y se borró `useCloudSync`.
+  - **Se quitó el borrado "compensatorio"** de la Semana 8 (borrar el archivo si fallaba la fila): con la bajada,
+    ese archivo puede pertenecer a una fila que ya existe en la nube. La ruta es fija y el reintento lo reemplaza.
+  - **Un error al bajar no bloquea la subida**: se anota y `push` corre igual (lo local no espera a la nube).
+  - **El cursor se guarda como el texto exacto de Postgres** (microsegundos); pasarlo por `Date` lo truncaría.
+  - **Borrado sin conexión.** La regla de la Semana 8 "sin red no se borra" se reemplazó por el borrado lógico:
+    borrar marca `deletedAt`, la foto desaparece de la UI y la sincronización avisa a la nube y luego borra el
+    archivo del bucket, el archivo local y la fila.
+  - **El borrado gana siempre** (sin comparar fechas), a diferencia de "gana el último cambio" para las
+    ediciones: quien borra también quita el archivo del bucket, así que dejar ganar una edición posterior
+    reviviría una fila sin imagen. El escenario de la guía (editar en A y después borrar en B) da lo mismo.
+  - `isOnline()` puntual (Semana 8) se retiró con el borrado físico: la única regla de "hay red" es
+    `isOnlineState()`, que usa `onlineManager`.
 
 ## 3. Alucinaciones o Errores Detectados
 
-- **El `import * as Crypto from 'expo-crypto'` de la guía rompió `npm run db:generate` (Fase 4).** `drizzle-kit`
-  ejecuta `db/schema.ts` en Node, donde el módulo nativo no carga: `Error: Cannot find module 'expo-modules-core'`.
-  Se cambió por una función `newClientId()` que hace `require('expo-crypto')` solo al generar el valor (dentro
-  de la app). Así el `$defaultFn` sigue cubriendo todos los inserts, incluido `db/devSeed.ts`.
-- **Fotos pendientes "sin archivo" (Fase 6).** Al sincronizar, 3 fotos fallaban con *"El archivo de esta foto
-  ya no existe en el teléfono"*, aunque en la pestaña Fotos parecían verse bien. **Antes de cambiar código** se
-  agregó un diagnóstico en `__DEV__` (`diagnosePhotoFile`). La salida real en el teléfono (Android, Expo Go)
-  para las fotos 1, 2 y 4 fue:
-  - `uri` en la **caché** (`.../cache/ExperienceData/.../Camera/…jpg` y `.../ImagePicker/…jpeg`): fotos guardadas
-    antes de la C5 de la Semana 7, cuando todavía no se copiaban a `Paths.document/photos`.
-  - `new File(uri).exists` → `false`.
-  - `fetch(uri).then(r => r.arrayBuffer())` → **14 bytes** (sin error). Una foto real pesa más de 1 MB
-    (la del T6: 1.442.220 bytes).
-
-  **Conclusión:** el sistema borró esos archivos de la caché. La lectura no estaba mal. Cambiar a `fetch`, como
-  sugería la guía, habría sido un error: `fetch` no falla con un archivo inexistente y habría subido "fotos"
-  corruptas de 14 bytes al bucket. Se mantuvo `File.exists` + `File.arrayBuffer()`. La imagen que se seguía
-  viendo en la grilla probablemente era la caché de imágenes de Android, no el archivo; no se comprobó.
-
-  **Corrección:** `canUpload()` = la foto ya tiene `remotePath` o su archivo existe. Las pendientes que no
-  cumplen no se intentan subir, no cuentan en "Sincronizar (N)", el resumen dice cuántas quedaron "sin
-  archivo" y el detalle muestra *"Sin archivo: no se puede subir"*. Una foto ya subida que perdió el archivo
-  local sí puede actualizar su metadata (no necesita volver a subir el archivo). El conteo del botón pasó de
-  un `COUNT` en SQL a filtrar en el hook las filas pendientes, porque SQLite no sabe si el archivo existe.
-- **`npx expo start` volvió a reescribir `tsconfig.json`** (igual que en la Semana 7). Se restauró con
-  `git checkout -- tsconfig.json`; ese cambio no entró en ningún commit.
-- **Riesgo revisado en la migración `0004` (no fue error).** Cambiar el `UNIQUE` de `albums.name` podía hacer
-  que `drizzle-kit` recreara la tabla `albums` (`DROP TABLE`), lo que con la llave foránea de `photos` habría
-  fallado o desvinculado fotos. Se revisó primero la `0000`: el `UNIQUE` era un índice aparte, así que el SQL
-  generado fue `DROP INDEX` + `ALTER TABLE … ADD owner_id` + `CREATE UNIQUE INDEX (owner_id, name)`, sin
-  recrear tablas. Se comprobó aplicando `0000`–`0004` con `node:sqlite` y `PRAGMA foreign_keys = ON` sobre
-  datos de prueba: las filas y el `album_id` se conservan, el mismo nombre de álbum se permite con otro dueño
-  y se rechaza con el mismo dueño.
-- **El quinto comando de la auditoría (Fase 10) se encuentra a sí mismo.** `git log --all -p | grep -nE
-  "sb_secret_|service_role"` devolvió 3 líneas, todas del texto de `docs/SEMANA8.md` (que nombra esas
-  palabras para prohibirlas y contiene los propios comandos). El cuarto comando excluye ese archivo, pero el
-  quinto no puede. Se verificó que no son llaves buscando en todo el historial valores con forma de llave
-  (`sb_secret_…`, `sb_publishable_…`, JWT `eyJ…`): solo aparece el marcador `sb_publishable_xxxxxxxx` de
-  `.env.example`. No hubo que rotar llaves.
+- **`markSynced` nunca se ejecutaba (error de Claude Code en la Fase 4).** Al pasar la subida a `services/sync.ts`
+  se perdió el `await`: en Drizzle un `update()` es una `QueryPromise` perezosa que solo corre dentro de `then()`
+  (se comprobó en `node_modules/drizzle-orm/query-promise.js`). Síntoma en el teléfono: el indicador seguía en
+  "2 pendientes". Se agregaron registros `[red]`/`[sync]` (solo en desarrollo) antes de cambiar nada y Metro
+  mostró `{"pushed":6,"failed":0,"sinArchivo":3}` en cada ciclo: 2 fotos × 3 vueltas, siempre las mismas.
+  **Corrección:** `markSynced` termina en `.run()` dentro del repositorio. Las subidas repetidas no duplicaron
+  nada (ruta fija + `upsert` por `client_id`), lo que de paso confirmó la idempotencia. Después: `"pushed":0`.
+- **Hueco en el primer diseño del borrado (detectado en la revisión antes del commit).** `pushDeletion` usaba la
+  subida normal, que llama a `markSynced`; si después fallaba el borrado del archivo en el bucket, la foto ya no
+  quedaba pendiente y el archivo nunca se reintentaba. Se agregó `pushOne(..., markAsSynced = false)`.
+- **Comando destructivo agregado por error.** Al escribir el AI-LOG de SDK 58, Claude Code agregó al final de un
+  comando un `git checkout -- .` que habría descartado todos los cambios sin commit. El clasificador de permisos
+  de Claude Code lo bloqueó y no se ejecutó; se repitió solo la parte correcta.
+- **`docs/SEMANA10.md` entró en el commit de respaldo de la Semana 10** con el texto "AIza". Lo detectó ING; se
+  quitó con `git rm --cached` + `git commit --amend` antes de subir la rama.
+- **OneDrive dejó `node_modules` "solo en la nube".** Después de instalar los paquetes de la Fase 9, Metro falló
+  con `Unable to resolve "@expo/metro-runtime"` aunque el archivo aparecía en la carpeta. Tenía el atributo
+  `ReparsePoint`: 24.357 de 40.816 archivos de `node_modules` estaban liberados por OneDrive. Se marcaron como
+  "siempre en este dispositivo" con `attrib +P -U /S /D node_modules\*`. No fue un error del código.
+- **URLs firmadas en la caché persistente (C3).** Duran 1 h; al restaurar la caché pueden haber vencido. No se
+  agregó código: `PhotoImage` ya muestra un placeholder si la imagen falla y la consulta `['nube']` se refresca
+  al volver la red (`refetchOnReconnect`), con URLs nuevas.
+- **Errores típicos de la tabla de la guía:** no aparecieron. Desde el principio se usó la forma con objeto de
+  `useQuery`, `gcTime`, `initialPageParam` tipado, paginación por cursor (`lt('taken_at', cursor)`),
+  `onlineManager` con `expo-network`, bajar antes de subir, `upsert` con `onConflict: 'client_id'`,
+  `syncedAt` = versión subida, cursor con `server_updated_at` y borrado lógico.
+- **`tsconfig.json`.** Ver la sección siguiente: en la actualización a SDK 58 se dejó de restaurar.
 
 ---
 

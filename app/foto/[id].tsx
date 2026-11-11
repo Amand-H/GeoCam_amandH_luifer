@@ -14,8 +14,8 @@ import { Chip } from '@/components/Chip';
 import { PhotoImage } from '@/components/PhotoImage';
 import { colors } from '@/constants/theme';
 import { useAlbums } from '@/hooks/useAlbums';
-import { canUpload, useCloudSync } from '@/hooks/useCloudSync';
 import { usePhoto } from '@/hooks/usePhoto';
+import { canUpload, useSync } from '@/hooks/useSync';
 
 const headerOptions = {
   headerShown: true,
@@ -34,7 +34,8 @@ export default function FotoDetalleScreen() {
   const id = Number(params.id);
   const { photo, isLoading, updateNote, toggleFavorite, moveToAlbum, remove } = usePhoto(id);
   const { albums } = useAlbums();
-  const { uploadOne, isUploading } = useCloudSync();
+  // Semana 9: la subida es automática; el botón solo pide el mismo ciclo ya (no hay una segunda subida)
+  const { syncNow, isSyncing: isUploading, isOnline } = useSync();
 
   if (isLoading) {
     return (
@@ -76,12 +77,13 @@ export default function FotoDetalleScreen() {
   };
 
   const handleUpload = async () => {
-    const error = await uploadOne(photo.id);
-    if (error) Alert.alert('No se pudo subir', error);
+    const { data, error } = await syncNow();
+    const message = error?.message ?? data?.errors[0];
+    if (message) Alert.alert('No se pudo sincronizar', message);
   };
 
   const uploadable = canUpload(photo);
-  const uploadDisabled = photo.isSynced || isUploading || !uploadable;
+  const uploadDisabled = photo.isSynced || isUploading || !uploadable || !isOnline;
 
   let syncLabel = 'Aún no está en la nube';
   if (!uploadable) {
@@ -91,6 +93,7 @@ export default function FotoDetalleScreen() {
   } else if (photo.remotePath) {
     syncLabel = 'Tiene cambios sin subir';
   }
+  if (!photo.isSynced && uploadable && !isOnline) syncLabel += ' · se subirá al volver la conexión';
 
   return (
     <ScrollView style={styles.fill} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">

@@ -50,10 +50,22 @@ export const photos = sqliteTable(
     syncedAt: integer('synced_at', { mode: 'timestamp_ms' }),
     // Usuario de Supabase dueño de la foto (null = tomada antes de la Semana 8, sin reclamar)
     ownerId: text('owner_id'),
+    // Semana 9 (C1): borrado lógico. La fila queda marcada hasta que la marca llega a la nube;
+    // después se borra de verdad (fila + archivo). Ninguna consulta de la UI muestra filas marcadas.
+    deletedAt: integer('deleted_at', { mode: 'timestamp_ms' }),
   },
   // Las listas se ordenan por fecha descendente: el índice evita ordenar toda la tabla
   (t) => [index('photos_created_at_idx').on(t.createdAt)]
 );
+
+/**
+ * Semana 9: pares clave-valor de la sincronización. Ej.: `lastPulledAt:<userId>` guarda
+ * el cursor de bajada (server_updated_at de la última fila remota aplicada) de cada usuario.
+ */
+export const syncMeta = sqliteTable('sync_meta', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+});
 
 export type Album = typeof albums.$inferSelect;
 export type NewAlbum = typeof albums.$inferInsert;

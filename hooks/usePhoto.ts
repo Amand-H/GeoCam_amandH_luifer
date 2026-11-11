@@ -4,6 +4,7 @@ import { photosRepo } from '@/db/repositories/photos';
 import { useAlbumsVersion } from '@/hooks/useAlbumsVersion';
 import { useOwnerId } from '@/hooks/useOwnerId';
 import { removePhotoById, toGeoPhoto } from '@/hooks/usePhotos';
+import { requestSync } from '@/hooks/useSync';
 import type { GeoPhoto } from '@/types/geo';
 
 /** Detalle reactivo de una foto. photo es null si no existe (p. ej. ya se borró). */
@@ -23,17 +24,20 @@ export function usePhoto(id: number) {
     async (note: string) => {
       const trimmed = note.trim();
       await photosRepo.update(id, ownerId, { note: trimmed === '' ? null : trimmed });
+      requestSync();
     },
     [id, ownerId]
   );
 
   const toggleFavorite = useCallback(async () => {
     await photosRepo.update(id, ownerId, { favorite: !favorite });
+    requestSync();
   }, [id, ownerId, favorite]);
 
   const moveToAlbum = useCallback(
     async (albumId: number | null) => {
       await photosRepo.update(id, ownerId, { albumId });
+      requestSync();
     },
     [id, ownerId]
   );
