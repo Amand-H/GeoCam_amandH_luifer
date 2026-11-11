@@ -2,14 +2,146 @@
 
 Cámara que etiqueta cada foto con coordenadas GPS, reacciona al movimiento del teléfono y guarda
 todo en una base de datos local para funcionar sin conexión.
-Taller Integrador 2 · **Semana 6: Módulos Nativos y Sensores** · **Semana 7: Persistencia con Drizzle ORM + SQLite** · **Semana 8: Supabase (auth, Storage, RLS y Realtime)**.
+Taller Integrador 2 · **Semana 6: Módulos Nativos y Sensores** · **Semana 7: Persistencia con Drizzle ORM + SQLite** · **Semana 8: Supabase (auth, Storage, RLS y Realtime)** · **Semana 9: Sincronización offline-first con TanStack Query**.
 
 **Integrantes:** Luis Nuñez, Amand Herrera
 
 Construida con **Expo SDK 58** (React Native 0.88, React 19.3), Expo Router y TypeScript estricto. Todo el acceso al hardware
 está encapsulado en Custom Hooks tipados (sin `any`) que exponen los errores como estado para la UI.
 
+## Semana 9 – Sincronización offline-first
+
+La app funciona igual con o sin conexión. **SQLite es la fuente de verdad**: la interfaz siempre lee y escribe en
+local y nunca espera a la nube. Cuando hay red, la app **baja** lo que cambió en otros teléfonos con la misma cuenta
+y **sube** lo pendiente, sola. TanStack Query v5 solo ejecuta, reintenta y dispara la sincronización; la lógica es
+nuestra (`services/sync.ts`).
+
+![Prueba sin conexión](docs/screenshots/flujo-semana9.gif)
+
+| Requisito | Implementación |
+| --- | --- |
+| T1. Backend | [`supabase/semana9.sql`](supabase/semana9.sql): `server_updated_at` + trigger + índice (la política UPDATE ya existía) |
+| T2. TanStack Query | `lib/queryClient.ts`: `onlineManager` con `expo-network`, `focusManager` con `AppState`, `useIsOnline()` |
+| T3. Soporte local | Migración `0005` (`sync_meta`), `db/repositories/syncMeta.ts`, métodos nuevos de `photosRepo` |
+| T4. Bajar | `pull()` en `services/sync.ts`: cursor por usuario, avanza fila por fila |
+| T5. Subir | `push()` en `services/sync.ts`: archivo una vez, `upsert` por `client_id`, `syncedAt` = versión subida |
+| T6. Disparo y estado | `hooks/useSync.ts` + `components/SyncStatus.tsx` en GeoCam y Fotos (reemplaza a **Sincronizar (N)**) |
+| C1. Borrados | Borrado lógico (`deleted_at`): migración `0006` y [`supabase/semana9-borrados.sql`](supabase/semana9-borrados.sql) |
+| C2. Feed de la Nube | `useInfiniteQuery`, cursor `taken_at`, 12 por página, búsqueda en vivo (400 ms), 4 estados de UI |
+| C3. Caché persistente | `PersistQueryClientProvider` + `expo-sqlite/kv-store`, 24 h; `['sync']` no se guarda |
+| C4. Pantalla de estado | `app/sync.tsx`: pendientes, última sincronización, resultado, último error, **Sincronizar ahora** |
+| C5. Errores por foto | Si una foto falla se anota y se sigue con las demás; queda pendiente para el próximo ciclo |
+
+### El ciclo de sincronización
+
+```mermaid
+flowchart TD
+    D1([Inicio de sesión / abrir la app]) --> Q
+    D2([Vuelve la red · onlineManager]) --> Q
+    D3([App en primer plano · focusManager]) --> Q
+    D4([Cambio local · requestSync]) --> Q
+    D5([Tocar Sincronizar ahora]) --> Q
+    Q{"useQuery ['sync', userId]<br/>¿hay red?"} -- no --> P[En pausa: se reanuda al volver la red]
+    Q -- sí --> B["1. BAJAR<br/>filas con server_updated_at > cursor"]
+    B --> C{¿Existe en el teléfono?}
+    C -- no --> N[Descargar archivo + insertar ya sincronizada]
+    C -- "sí, viene borrada" --> X[Borrar fila y archivo locales]
+    C -- "sí, la remota es más nueva" --> A[Aplicar nota y favorita]
+    C -- "sí, la local es más nueva" --> L[No tocar: se sube en el paso 2]
+    N & X & A & L --> K[Avanzar el cursor]
+    K --> S["2. SUBIR pendientes<br/>syncedAt nulo o updatedAt > syncedAt"]
+    S --> U[Archivo solo la 1.ª vez → upsert por client_id → syncedAt = updatedAt subido]
+    S --> Z[Borradas: lápida deleted_at → borrar archivo del bucket → borrar local]
+    U & Z --> R{¿Se editó algo durante el ciclo?}
+    R -- "sí (máx. 3 vueltas)" --> B
+    R -- no --> F([Al día])
+```
+
+Un solo ciclo a la vez: si se pide otro mientras uno está en curso, se reutiliza su promesa.
+
+### Dos columnas de fecha
+
+| Columna remota | Quién la escribe | Para qué sirve |
+| --- | --- | --- |
+| `updated_at` | El **teléfono** (hora de la última edición del usuario) | Decidir quién gana un conflicto |
+| `server_updated_at` | **PostgreSQL** (trigger `before insert or update`) | Cursor de bajada (`lastPulledAt:<userId>` en `sync_meta`) |
+
+Hacen falta las dos porque miden cosas distintas. `updated_at` dice **cuándo editó el usuario**, aunque esa edición
+llegue a la nube horas después (modo avión). Si el cursor usara `updated_at`, una edición vieja que llega tarde
+quedaría *antes* del cursor y los demás teléfonos nunca la bajarían. `server_updated_at` dice **cuándo llegó el
+cambio al servidor**, siempre avanza y sale de un solo reloj, así que nada se salta.
+
+### Conflictos: gana el último cambio
+
+`remoteWins(localUpdatedAt, remoteUpdatedAt)` es una función pura: gana la versión con el `updated_at` más
+reciente; con fechas iguales no gana nadie (ya están sincronizadas).
+
+> **Ejemplo.** Los dos teléfonos están en modo avión. En A la nota de una foto pasa a **"A"** a las **10:00**; en B
+> la misma foto pasa a **"B"** a las **10:01**. Se reconecta A: baja (nada nuevo) y sube "A" (`updated_at` 10:00).
+> Se reconecta B: baja la fila de A, compara 10:00 contra su 10:01 → **gana la local**, no la toca, y sube "B".
+> A, en su siguiente ciclo, baja "B" (10:01 > 10:00) y la aplica. **En los dos queda "B"**, sin importar quién se
+> reconectó primero.
+
+`markSynced` guarda en `syncedAt` el `updatedAt` **que se subió**, nunca la hora actual: si el usuario edita mientras
+se sube, `updatedAt > syncedAt` y la foto sigue pendiente. `applyRemote` tampoco usa la hora actual.
+
+### Borrado lógico
+
+Borrar **marca** la foto (`deletedAt` = ahora, `updatedAt` = ahora) y funciona **sin conexión**: desaparece al
+momento de Fotos, el Mapa y el detalle, pero la fila queda como pendiente. Esto **reemplaza la regla de la Semana 8**
+"sin red no se borra". Al sincronizar:
+
+- Si la foto **nunca se subió**, se borra solo en el teléfono (la nube no la conoce).
+- Si ya estaba en la nube, se sube la **lápida** (`deleted_at`) con el mismo `upsert`, después se borra el archivo
+  del bucket y por último la fila y el archivo locales. Si falla el bucket, la foto sigue pendiente y se reintenta.
+- Los demás teléfonos reciben la lápida por el cursor y borran su copia; si no la tenían, no la descargan.
+- **El borrado gana siempre**, sin comparar fechas: quien borra quita el archivo del bucket, así que una edición
+  posterior en otro teléfono no puede revivir la foto.
+
+El shake ("borrar todo") usa el mismo borrado lógico. La pestaña Nube no muestra lápidas.
+
+### Matriz de pruebas
+
+> Escenarios armados a partir de las pruebas de la Semana 9 (T7, C1, C2 y C3). Si la guía los numera o redacta
+> distinto, ajustar el texto. La columna *Obtenido* se llena con los resultados en dos teléfonos.
+
+| # | Escenario | Esperado | Obtenido |
+| --- | --- | --- | --- |
+| 1 | **Sin conexión:** modo avión, 2 fotos + editar 1 nota, quitar modo avión | El indicador muestra "Sin conexión · 3 pendientes"; al volver la red se suben solas y queda "Al día" | |
+| 2 | **Dos teléfonos:** misma cuenta en otro teléfono | Las fotos aparecen con imagen, nota y en el mapa (`pulled` = N) | |
+| 3 | **Conflicto:** ambos en modo avión, nota en A y 1 min después en B, reconectar | En los dos queda la nota de B | |
+| 4 | **Sin duplicados:** tocar Sincronizar ahora varias veces seguidas | En Supabase sigue habiendo una fila y un archivo por foto | |
+| 5 | **Borrado sincronizado:** borrar en A con red | Desaparece en B, en la Nube y del bucket (`deleted_at` lleno) | |
+| 6 | **Editar en A y borrar en B** (ambos sin red) | Queda borrada en los dos | |
+| 7 | **Nube y caché:** más de 12 fotos, buscar, cerrar la app y abrir en modo avión | Pagina de a 12, filtra por nota y sin red muestra el aviso y la última lista guardada | |
+
+### Preguntas para sustentar
+
+> Respuestas breves a los puntos centrales de la semana. Si la guía trae otras preguntas, reemplazarlas.
+
+1. **¿Por qué SQLite es la fuente de verdad y no Supabase?** Porque la app debe funcionar en modo avión: la UI lee y
+   escribe en local al instante y la nube es una copia que se pone al día cuando hay red.
+2. **¿Por qué el cursor usa `server_updated_at` y no `updated_at`?** Porque `updated_at` es la hora del teléfono
+   cuando el usuario editó, y un cambio hecho sin red llega tarde con una hora vieja; quedaría detrás del cursor y
+   nadie lo bajaría. `server_updated_at` lo pone el servidor al llegar el cambio y siempre avanza.
+3. **¿Por qué primero bajar y después subir?** Para comparar antes de escribir: si se subiera primero, una versión
+   local vieja podría pisar en la nube un cambio más nuevo de otro teléfono. Al bajar primero, `remoteWins` decide.
+4. **¿Por qué repetir la sincronización no duplica nada?** La ruta del archivo depende solo del `clientId`, la fila se
+   escribe con `upsert` por `client_id` y el archivo solo se sube si la foto no tiene `remotePath`.
+5. **¿Por qué borrado lógico y no `DELETE`?** Un `DELETE` no deja rastro: los demás teléfonos nunca se enterarían y la
+   foto volvería a subirse desde ellos. La lápida (`deleted_at`) viaja por el cursor como cualquier otro cambio.
+
+### Limitaciones conocidas
+
+- Solo se sincronizan nota, favorita y borrado; los álbumes siguen siendo locales.
+- Las fotos antiguas sin archivo (guardadas en caché antes de la C5 de la Semana 7) no se pueden subir: se cuentan
+  como "sin archivo" en la pantalla de sincronización.
+- Las URLs firmadas de la caché vencen en 1 h: sin red puede verse el placeholder "No disponible" en vez de la imagen.
+
 ## Semana 8 – GeoCam en la nube
+
+> Desde la Semana 9 la subida es automática (`services/sync.ts`): el botón **Sincronizar (N)**, `useCloudSync` y el
+> borrado físico que se describen aquí se reemplazaron por el indicador de estado y el borrado lógico.
 
 Las fotos se pueden subir a **Supabase** (Storage + PostgreSQL) con cuenta propia. La app sigue siendo
 offline-first: SQLite es la fuente de verdad en el teléfono y la nube es una copia que se sincroniza a pedido.
