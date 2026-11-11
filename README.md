@@ -113,7 +113,7 @@ El shake ("borrar todo") usa el mismo borrado lógico. La pestaña Nube no muest
 | 4 | **Sin duplicados:** tocar Sincronizar ahora varias veces seguidas | En Supabase sigue habiendo una fila y un archivo por foto | 🟡 Parcial: por el error de la Fase 4 (ver AI-LOG) las mismas 2 fotos se subieron varias veces seguidas sin error; `client_id` es único en la tabla, así que no pueden quedar filas duplicadas. Falta contar filas y archivos a propósito |
 | 5 | **Borrado sincronizado:** borrar en A con red | Desaparece en B, en la Nube y del bucket (`deleted_at` lleno) | 🟡 Parcial: con un teléfono, la foto desapareció de Fotos y de la Nube, el ciclo dio `pushed: 1` y se borró el archivo local; falta verlo en un segundo teléfono |
 | 6 | **Editar en A y borrar en B** (ambos sin red) | Queda borrada en los dos | ⏳ Pendiente: requiere dos teléfonos |
-| 7 | **Nube y caché:** más de 12 fotos, buscar, cerrar la app y abrir en modo avión | Pagina de a 12, filtra por nota y sin red muestra el aviso y la última lista guardada | 🟡 Parcial: búsqueda por nota y aviso sin conexión OK; paginación no aplicable (menos de 12 fotos); caché al cerrar la app pendiente |
+| 7 | **Nube y caché:** más de 12 fotos, buscar, cerrar la app y abrir en modo avión | Pagina de a 12, filtra por nota y sin red muestra el aviso y la última lista guardada | ✅ Pasó (búsqueda por nota, aviso sin conexión y caché: con la app cerrada y en modo avión, la Nube mostró la última lista guardada; las miniaturas no cargan sin red porque las URLs firmadas lo necesitan). Paginación no aplicable: menos de 12 fotos en la nube |
 
 ### Preguntas para sustentar
 
