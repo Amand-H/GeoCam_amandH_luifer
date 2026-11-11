@@ -9,7 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Chip } from '@/components/Chip';
 import { PhotoImage } from '@/components/PhotoImage';
 import { colors } from '@/constants/theme';
@@ -20,12 +20,16 @@ import { usePhoto } from '@/hooks/usePhoto';
 const headerOptions = {
   headerShown: true,
   title: 'Foto',
+  // SDK 58: en iOS 26+ el header es transparente por defecto y el contenido queda debajo.
+  // Esta pantalla usa un header opaco del tema, así que se mantiene como antes.
+  headerTransparent: false,
   headerStyle: { backgroundColor: colors.background },
   headerTintColor: colors.text,
   contentStyle: { backgroundColor: colors.background },
 } as const;
 
 export default function FotoDetalleScreen() {
+  const router = useRouter(); // SDK 58: se prefiere al router de módulo
   const params = useLocalSearchParams<{ id: string }>();
   const id = Number(params.id);
   const { photo, isLoading, updateNote, toggleFavorite, moveToAlbum, remove } = usePhoto(id);

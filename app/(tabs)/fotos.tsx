@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Alert, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AlbumNameModal } from '@/components/AlbumNameModal';
 import { Chip } from '@/components/Chip';
@@ -23,6 +23,7 @@ function notePreview(note: string | null): string | null {
 }
 
 export default function FotosScreen() {
+  const router = useRouter(); // SDK 58: se prefiere al router de módulo
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState('');
   const [albumFilter, setAlbumFilter] = useState<AlbumFilter>(null);

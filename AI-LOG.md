@@ -104,3 +104,48 @@
   quinto no puede. Se verificó que no son llaves buscando en todo el historial valores con forma de llave
   (`sb_secret_…`, `sb_publishable_…`, JWT `eyJ…`): solo aparece el marcador `sb_publishable_xxxxxxxx` de
   `.env.example`. No hubo que rotar llaves.
+
+---
+
+## Actualización a SDK 58
+
+Expo Go del teléfono se actualizó y dejó de abrir proyectos SDK 57 (*"Project is incompatible with this version
+of Expo Go"*). Se subió el proyecto **una sola vez sobre `main`**, en la rama `upgrade-sdk58`, siguiendo
+`docs/UPGRADE-SDK58.md`. Claude Code leyó primero las fuentes oficiales (blog de actualización, changelog de
+SDK 58 y la guía de Expo Router 57 → 58). El changelog es muy largo y no se leyó completo; lo que no se leyó
+se tomó de un resumen.
+
+**Versiones:** `expo` 57.0.30 → 58.0.23 · `react-native` 0.86.3 → 0.88.1 · `react`/`react-dom` 19.2.3 → 19.3.0 ·
+`@types/react` 19.2 → 19.3 · `expo-router` 57.0.28 → 58.0.30 · `react-native-maps` 1.27.2 → 1.29.11 ·
+`react-native-screens` 4.26 → 4.30.1 · `react-native-safe-area-context` 5.7 → 5.11.1 · todos los `expo-*` a 58.0.x.
+`typescript` (6.0.3), `drizzle-orm`, `drizzle-kit` y `@supabase/supabase-js` quedaron igual. `npx expo-doctor`:
+20/20 sin problemas.
+
+Qué rompió y cómo se arregló (errores reales):
+
+- **`npm install` falló con `ERESOLVE`.** `expo-router@58.0.30` declara `@expo/ui@^58.0.27` como dependencia
+  *peer opcional* y npm no la resolvía. Se creó `.npmrc` con `legacy-peer-deps=true` (lo que indica la guía
+  para este caso) y se repitió. `@expo/ui` no se instala: solo hace falta para `Stack.Toolbar` en Android.
+- **`npx expo install expo@^58.0.0` dejó `"expo": "^58.0.0"`** en `package.json`, a diferencia del `~` que
+  usan los demás paquetes de Expo. Se fijó en `~58.0.23` (la versión instalada).
+- **Un error de tipos por la API estricta de React Native 0.88**, que ahora viene activada por defecto:
+  `app/(tabs)/nube.tsx` → `TS2322: Type 'Element | null' is not assignable to type 'Element | ComponentType<any>
+  | undefined'` en `ListEmptyComponent`. Se cambió `null` por `undefined`. No hubo imports profundos de
+  `react-native/Libraries/*` ni `ref` con tipos viejos que fallaran.
+- **Revisado y cambiado sin que fallara (preventivo, según la guía de Expo Router 58):**
+  - El `router` de módulo en `fotos.tsx`, `mapa.tsx` y `foto/[id].tsx` pasó a `useRouter()`. En SDK 58, el
+    `router` de módulo lanza un error si se usa antes del primer render. Aquí solo se usaba en `onPress`, pero
+    la guía recomienda el hook.
+  - `headerTransparent: false` en el detalle de la foto. En iOS 26+ el header pasa a ser transparente por
+    defecto y el contenido quedaría debajo del header oscuro del tema. En Android no cambia nada.
+- **Revisado sin cambios:** las 4 pestañas de `expo-router/js-tabs` están declaradas en el layout (SDK 58 oculta
+  las que no lo estén); no se usa `initialRouteName`, `redirect`/`initialParams` en `Screen`, `freezeOnBlur`,
+  `InteractionManager`, `Modal animated`, props eliminadas de `StatusBar`, `ImageBackground`, `Touchable`,
+  `useNavigation`, `Linking.parse` ni `File.write()`. `Stack.Protected` sigue igual (`redirectTo` es opcional).
+- **`tsconfig.json`: esta vez se aceptó el cambio en lugar de restaurarlo.** Se leyó el código de la CLI
+  (`@expo/cli/.../type-generation`): cuando `app.json` no activa `experiments.typedRoutes`, `expo start` quita
+  `.expo/types/**/*.ts` y `expo-env.d.ts` del `include` y borra `expo-env.d.ts`; si estuviera activo, los
+  agregaría. Por eso se reescribía en cada arranque (también en las semanas 7 y 8). El changelog no lo
+  menciona, pero es el comportamiento intencional de la CLI para un proyecto sin rutas tipadas. Restaurarlo
+  dejaba el archivo modificado en cada `expo start`. Con el `include` nuevo, `npx tsc --noEmit` pasa.
+- `drizzle/` no se tocó y no se regeneró ninguna migración; la base local del teléfono no cambia.

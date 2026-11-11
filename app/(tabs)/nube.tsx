@@ -50,7 +50,8 @@ export default function NubeScreen() {
         refreshing={isLoading}
         onRefresh={reload}
         ListEmptyComponent={
-          isLoading || error ? null : <Text style={styles.empty}>Aún no tienes fotos en la nube.</Text>
+          // RN 0.88 (API de tipos estricta): ListEmptyComponent no acepta null, solo undefined
+          isLoading || error ? undefined : <Text style={styles.empty}>Aún no tienes fotos en la nube.</Text>
         }
       />
     </View>

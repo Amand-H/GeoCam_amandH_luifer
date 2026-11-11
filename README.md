@@ -6,7 +6,7 @@ Taller Integrador 2 · **Semana 6: Módulos Nativos y Sensores** · **Semana 7: 
 
 **Integrantes:** Luis Nuñez, Amand Herrera
 
-Construida con **Expo SDK 57**, Expo Router y TypeScript estricto. Todo el acceso al hardware
+Construida con **Expo SDK 58** (React Native 0.88, React 19.3), Expo Router y TypeScript estricto. Todo el acceso al hardware
 está encapsulado en Custom Hooks tipados (sin `any`) que exponen los errores como estado para la UI.
 
 ## Semana 8 – GeoCam en la nube
@@ -455,10 +455,14 @@ de modo que si el usuario lo activó en Ajustes la pantalla pasa sola a `granted
 
 ```bash
 npm install
-npx expo start          # escanea el QR con Expo Go (teléfono físico)
-# o, si el teléfono no está en la misma red:
+npx expo start          # escanea el QR con Expo Go para SDK 58 (teléfono físico)
+# o, si el teléfono no está en la misma red (en SDK 58 el túnel pide `npx expo login`):
 npx expo start --tunnel
 ```
+
+> Requisitos: **Expo SDK 58** (el Expo Go actual solo abre proyectos SDK 58) y Node 22.13+ / 24.3+.
+> El repo trae `.npmrc` con `legacy-peer-deps=true`: sin eso `npm install` falla con `ERESOLVE` por la
+> dependencia opcional `@expo/ui` de `expo-router` 58.
 
 Verificaciones:
 

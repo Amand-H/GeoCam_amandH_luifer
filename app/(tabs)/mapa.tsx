@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, type Region } from 'react-native-maps';
-import { router, useIsFocused } from 'expo-router';
+import { useIsFocused, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGeoLocation } from '@/hooks/useGeoLocation';
 import { useShake } from '@/hooks/useShake';
@@ -24,6 +24,7 @@ function hasCoords(photo: GeoPhoto): photo is LocatedPhoto {
 }
 
 export default function MapaScreen() {
+  const router = useRouter(); // SDK 58: se prefiere al router de módulo
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
