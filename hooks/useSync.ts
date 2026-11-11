@@ -19,6 +19,8 @@ export interface PendingPhoto {
   createdAt: number; // ms
   /** Nunca se subió y su archivo ya no está en el teléfono: no se puede subir. */
   sinArchivo: boolean;
+  /** C1: borrada en este teléfono; falta avisarle a la nube. */
+  deleted: boolean;
 }
 
 /**
@@ -43,7 +45,9 @@ export function useSync() {
         uri: p.uri,
         note: p.note,
         createdAt: p.createdAt.getTime(),
-        sinArchivo: !canUpload(p),
+        deleted: p.deletedAt !== null,
+        // Un borrado no necesita el archivo: solo hay que avisarle a la nube
+        sinArchivo: p.deletedAt === null && !canUpload(p),
       })),
     [pending]
   );

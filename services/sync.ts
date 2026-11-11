@@ -5,7 +5,13 @@ import { photosRepo } from '@/db/repositories/photos';
 import { syncMetaRepo } from '@/db/repositories/syncMeta';
 import { supabase } from '@/lib/supabase';
 import { BUCKET, storagePathFor } from '@/services/cloudStorage';
-import { diagnosePhotoFile, downloadPhotoFile, photoFileExists, readPhotoBytes } from '@/services/photoFiles';
+import {
+  deletePhotoFile,
+  diagnosePhotoFile,
+  downloadPhotoFile,
+  photoFileExists,
+  readPhotoBytes,
+} from '@/services/photoFiles';
 
 /** Fila de public.photos tal como la devuelve Supabase. */
 interface RemotePhoto {
@@ -19,6 +25,7 @@ interface RemotePhoto {
   taken_at: string;
   updated_at: string; // reloj del teléfono: decide conflictos
   server_updated_at: string; // reloj del servidor: cursor de bajada
+  deleted_at: string | null; // C1: borrado lógico ("lápida")
 }
 
 export interface SyncResult {
@@ -66,10 +73,30 @@ export function canUpload(photo: { uri: string; remotePath: string | null }): bo
 
 // ---------------------------------------------------------------- BAJAR
 
-/** Aplica en local una fila remota. Devuelve true si cambió algo en SQLite. */
+/** C1: borra de verdad la copia local (fila + archivo). Solo cuando la nube ya conoce el borrado. */
+function purgeLocal(photo: { id: number; uri: string }, userId: string) {
+  photosRepo.purge(photo.id, userId);
+  deletePhotoFile(photo.uri);
+}
+
+/**
+ * Aplica en local una fila remota. Devuelve true si cambió algo en SQLite.
+ * C1 – el borrado gana siempre (sin comparar fechas): quien borra también quita el archivo del
+ * bucket, así que dejar ganar una edición posterior reviviría una fila sin imagen.
+ */
 async function applyRemoteRow(remote: RemotePhoto, userId: string): Promise<boolean> {
   const local = photosRepo.findByClientId(remote.client_id, userId);
   const remoteUpdatedAt = new Date(remote.updated_at);
+
+  if (remote.deleted_at) {
+    // Lápida: si existe aquí se borra; si no existe, no se descarga
+    if (!local) return false;
+    purgeLocal(local, userId);
+    return true;
+  }
+
+  // Borrada aquí y aún sin avisar: no se aplica la edición remota; push sube la lápida enseguida
+  if (local?.deletedAt) return false;
 
   if (!local) {
     // Foto creada en otro teléfono: se descarga el archivo y se crea la fila local ya sincronizada
@@ -149,7 +176,7 @@ type PendingRow = ReturnType<typeof photosRepo.pendingForUpload>[number];
  * No hay "compensación" (borrar el archivo si falla la fila): con la bajada, ese archivo puede
  * pertenecer a una fila que ya existe en la nube. Un archivo sin fila se reemplaza en el reintento.
  */
-async function pushOne(photo: PendingRow, userId: string): Promise<void> {
+async function pushOne(photo: PendingRow, userId: string, markAsSynced = true): Promise<void> {
   if (!photo.clientId) throw new Error('La foto aún no tiene identificador de sincronización');
   const path = photo.remotePath ?? storagePathFor(userId, photo.clientId);
   const uploadedVersion = photo.updatedAt ?? photo.createdAt;
@@ -175,12 +202,34 @@ async function pushOne(photo: PendingRow, userId: string): Promise<void> {
       source: photo.source,
       taken_at: photo.createdAt.toISOString(),
       updated_at: uploadedVersion.toISOString(),
+      deleted_at: photo.deletedAt?.toISOString() ?? null, // C1: la lápida viaja en el mismo upsert
     },
     { onConflict: 'client_id' }
   );
   if (rowError) throw new Error(`No se pudo guardar la foto en la nube: ${rowError.message}`);
 
-  photosRepo.markSynced(photo.id, userId, path, uploadedVersion);
+  if (markAsSynced) photosRepo.markSynced(photo.id, userId, path, uploadedVersion);
+}
+
+/**
+ * C1: sube un borrado. La lápida (deleted_at) se escribe con el mismo upsert para que los demás
+ * teléfonos se enteren por el cursor; después se borra el archivo del bucket y la copia local.
+ * Si el archivo del bucket no se puede borrar se lanza el error y la foto sigue pendiente (reintento).
+ * Si la foto nunca se subió (sin remotePath), la nube no la conoce: se borra solo en local.
+ */
+async function pushDeletion(photo: PendingRow, userId: string): Promise<void> {
+  if (photo.remotePath) {
+    // Sin markSynced: si falla el borrado del archivo, la foto debe seguir pendiente para reintentarlo
+    await pushOne(photo, userId, false);
+    const { error } = await supabase.storage.from(BUCKET).remove([photo.remotePath]);
+    if (error) throw new Error(`No se pudo borrar el archivo de la nube: ${error.message}`);
+  }
+  purgeLocal(photo, userId);
+}
+
+/** Lo que push puede procesar: borrados (siempre) y fotos con archivo o ya subidas. */
+function isWorkable(photo: PendingRow): boolean {
+  return photo.deletedAt !== null || canUpload(photo);
 }
 
 interface PushResult {
@@ -196,12 +245,14 @@ interface PushResult {
  */
 export async function push(userId: string): Promise<PushResult> {
   const all = photosRepo.pendingForUpload(userId);
-  const pending = all.filter(canUpload);
+  // Los borrados se procesan aunque no tengan archivo: no hay nada que subir, solo avisar
+  const pending = all.filter(isWorkable);
   const result: PushResult = { pushed: 0, failed: 0, sinArchivo: all.length - pending.length, errors: [] };
 
   for (const photo of pending) {
     try {
-      await pushOne(photo, userId);
+      if (photo.deletedAt) await pushDeletion(photo, userId);
+      else await pushOne(photo, userId);
       result.pushed++;
     } catch (e) {
       result.failed++;
@@ -236,7 +287,7 @@ async function runSync(userId: string): Promise<SyncResult> {
     pushed += last.pushed;
 
     // Otra vuelta solo si quedó algo subible que no sea lo que acaba de fallar (= se editó durante el ciclo)
-    const remaining = photosRepo.pendingForUpload(userId).filter(canUpload).length;
+    const remaining = photosRepo.pendingForUpload(userId).filter(isWorkable).length;
     if (last.pushed === 0 || remaining <= last.failed) break;
   }
 

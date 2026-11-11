@@ -5,8 +5,6 @@ import type { Photo } from '@/db/schema';
 import { useAlbumsVersion } from '@/hooks/useAlbumsVersion';
 import { useOwnerId } from '@/hooks/useOwnerId';
 import { requestSync } from '@/hooks/useSync';
-import { deleteRemote, deleteRemoteMany } from '@/services/cloudPhotos';
-import { isOnline } from '@/services/network';
 import { deletePhotoFile, persistPhoto } from '@/services/photoFiles';
 import type { Coords, GeoPhoto, PhotoFilters } from '@/types/geo';
 
@@ -45,24 +43,15 @@ export function toGeoPhoto(row: PhotoRow): GeoPhoto {
   };
 }
 
-const OFFLINE_ONE = 'Sin conexión: la foto está en la nube y no se borró. Inténtalo con internet.';
-const OFFLINE_ALL = 'Sin conexión: hay fotos en la nube, así que no se borró ninguna. Inténtalo con internet.';
-
 /**
  * Compartida con usePhoto para que borrar desde el detalle haga lo mismo que desde el mapa.
- * Orden: nube (fila → archivo) → registro local → archivo local.
- * Si la parte remota falla o no hay conexión se lanza el error y no se toca nada local:
- * así nunca queda una foto en la nube sin su copia en el teléfono que permita borrarla.
+ * Semana 9 (C1): borrar = marcar (deletedAt). Funciona sin conexión; la sincronización le avisa
+ * a la nube y después borra la fila y los archivos (local y del bucket). Reemplaza la regla de la
+ * Semana 8 "sin red no se borra".
  */
 export async function removePhotoById(id: number, ownerId: string): Promise<void> {
-  const row = photosRepo.findById(id, ownerId);
-  if (!row) return;
-  if (row.remotePath) {
-    if (!(await isOnline())) throw new Error(OFFLINE_ONE);
-    await deleteRemote(row);
-  }
-  await photosRepo.remove(id, ownerId);
-  deletePhotoFile(row.uri);
+  photosRepo.markDeleted(id, ownerId);
+  requestSync();
 }
 
 export function usePhotos({ search = '', albumId = null, onlyFavorites = false }: PhotoFilters = {}) {
@@ -105,15 +94,10 @@ export function usePhotos({ search = '', albumId = null, onlyFavorites = false }
 
   const removePhoto = useCallback((id: number) => removePhotoById(id, ownerId), [ownerId]);
 
-  /** Misma regla que removePhotoById para todas a la vez: o se borra todo o no se borra nada. */
+  /** Shake → "borrar todo": el mismo borrado lógico que removePhotoById, para todas a la vez. */
   const clearAll = useCallback(async () => {
-    const rows = photosRepo.allUris(ownerId);
-    if (rows.some((r) => r.remotePath)) {
-      if (!(await isOnline())) throw new Error(OFFLINE_ALL);
-      await deleteRemoteMany(rows);
-    }
-    await photosRepo.clearAll(ownerId);
-    rows.forEach(({ uri }) => deletePhotoFile(uri));
+    photosRepo.markAllDeleted(ownerId);
+    requestSync();
   }, [ownerId]);
 
   return {

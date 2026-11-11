@@ -43,6 +43,13 @@
       "when": 1794362320924,
       "tag": "0005_sloppy_liz_osborn",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1794366035756,
+      "tag": "0006_gorgeous_kingpin",
+      "breakpoints": true
     }
   ]
 }

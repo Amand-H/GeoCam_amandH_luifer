@@ -86,6 +86,9 @@ function PendingRow({ photo }: { photo: PendingPhoto }) {
             {photo.note}
           </Text>
         ) : null}
+        {photo.deleted && (
+          <Text style={[styles.muted, { color: colors.danger }]}>Borrada: falta avisarle a la nube</Text>
+        )}
         {photo.sinArchivo && (
           <Text style={[styles.muted, { color: colors.warning }]}>Sin archivo: no se puede subir</Text>
         )}
