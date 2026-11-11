@@ -102,18 +102,18 @@ El shake ("borrar todo") usa el mismo borrado lógico. La pestaña Nube no muest
 
 ### Matriz de pruebas
 
-> Escenarios armados a partir de las pruebas de la Semana 9 (T7, C1, C2 y C3). Si la guía los numera o redacta
-> distinto, ajustar el texto. La columna *Obtenido* se llena con los resultados en dos teléfonos.
+> Escenarios armados a partir de las pruebas de la Semana 9 (T7, C1, C2 y C3). *Obtenido* refleja solo lo que se
+> probó de verdad en el teléfono; lo marcado como pendiente se completa con dos teléfonos (`npx expo start --tunnel`).
 
 | # | Escenario | Esperado | Obtenido |
 | --- | --- | --- | --- |
-| 1 | **Sin conexión:** modo avión, 2 fotos + editar 1 nota, quitar modo avión | El indicador muestra "Sin conexión · 3 pendientes"; al volver la red se suben solas y queda "Al día" | |
-| 2 | **Dos teléfonos:** misma cuenta en otro teléfono | Las fotos aparecen con imagen, nota y en el mapa (`pulled` = N) | |
-| 3 | **Conflicto:** ambos en modo avión, nota en A y 1 min después en B, reconectar | En los dos queda la nota de B | |
-| 4 | **Sin duplicados:** tocar Sincronizar ahora varias veces seguidas | En Supabase sigue habiendo una fila y un archivo por foto | |
-| 5 | **Borrado sincronizado:** borrar en A con red | Desaparece en B, en la Nube y del bucket (`deleted_at` lleno) | |
-| 6 | **Editar en A y borrar en B** (ambos sin red) | Queda borrada en los dos | |
-| 7 | **Nube y caché:** más de 12 fotos, buscar, cerrar la app y abrir en modo avión | Pagina de a 12, filtra por nota y sin red muestra el aviso y la última lista guardada | |
+| 1 | **Sin conexión:** modo avión, 2 fotos + editar 1 nota, quitar modo avión | El indicador muestra "Sin conexión · 3 pendientes"; al volver la red se suben solas y queda "Al día" | ✅ Pasó. En modo avión el indicador mostró las pendientes; al quitarlo se subieron solas y quedó "Al día" |
+| 2 | **Dos teléfonos:** misma cuenta en otro teléfono | Las fotos aparecen con imagen, nota y en el mapa (`pulled` = N) | ⏳ Pendiente: no se pudo probar (los teléfonos no estaban en la misma red al momento de entregar) |
+| 3 | **Conflicto:** ambos en modo avión, nota en A y 1 min después en B, reconectar | En los dos queda la nota de B | ⏳ Pendiente: requiere dos teléfonos (mismo motivo que la 2) |
+| 4 | **Sin duplicados:** tocar Sincronizar ahora varias veces seguidas | En Supabase sigue habiendo una fila y un archivo por foto | 🟡 Parcial: por el error de la Fase 4 (ver AI-LOG) las mismas 2 fotos se subieron varias veces seguidas sin error; `client_id` es único en la tabla, así que no pueden quedar filas duplicadas. Falta contar filas y archivos a propósito |
+| 5 | **Borrado sincronizado:** borrar en A con red | Desaparece en B, en la Nube y del bucket (`deleted_at` lleno) | 🟡 Parcial: con un teléfono, la foto desapareció de Fotos y de la Nube, el ciclo dio `pushed: 1` y se borró el archivo local; falta verlo en un segundo teléfono |
+| 6 | **Editar en A y borrar en B** (ambos sin red) | Queda borrada en los dos | ⏳ Pendiente: requiere dos teléfonos |
+| 7 | **Nube y caché:** más de 12 fotos, buscar, cerrar la app y abrir en modo avión | Pagina de a 12, filtra por nota y sin red muestra el aviso y la última lista guardada | 🟡 Parcial: búsqueda por nota y aviso sin conexión OK; paginación no aplicable (menos de 12 fotos); caché al cerrar la app pendiente |
 
 ### Preguntas para sustentar
 
