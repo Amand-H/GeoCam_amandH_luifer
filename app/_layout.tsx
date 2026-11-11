@@ -2,12 +2,12 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator';
-import { QueryClientProvider } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { db } from '@/db/client';
 import migrations from '@/drizzle/migrations';
 import { colors } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
-import { queryClient, useAppFocusManager } from '@/lib/queryClient';
+import { persistOptions, queryClient, useAppFocusManager } from '@/lib/queryClient';
 import { useClaimOrphans } from '@/hooks/useClaimOrphans';
 import { useSyncBootstrap } from '@/hooks/useSyncBootstrap';
 
@@ -74,12 +74,12 @@ export default function RootLayout() {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
+    <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
       <AuthProvider>
         <RootNavigator />
       </AuthProvider>
       <StatusBar style="light" />
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   );
 }
 
