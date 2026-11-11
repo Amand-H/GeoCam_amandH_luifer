@@ -55,6 +55,15 @@ export const photos = sqliteTable(
   (t) => [index('photos_created_at_idx').on(t.createdAt)]
 );
 
+/**
+ * Semana 9: pares clave-valor de la sincronización. Ej.: `lastPulledAt:<userId>` guarda
+ * el cursor de bajada (server_updated_at de la última fila remota aplicada) de cada usuario.
+ */
+export const syncMeta = sqliteTable('sync_meta', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+});
+
 export type Album = typeof albums.$inferSelect;
 export type NewAlbum = typeof albums.$inferInsert;
 export type Photo = typeof photos.$inferSelect;

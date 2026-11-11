@@ -1,19 +1,8 @@
 import { photosRepo } from '@/db/repositories/photos';
 import { supabase } from '@/lib/supabase';
+import { BUCKET, SIGNED_URL_SECONDS, storagePathFor } from '@/services/cloudStorage';
 import { readPhotoBytes } from '@/services/photoFiles';
 import type { CloudPhoto, GeoPhoto } from '@/types/geo';
-
-// Única capa que conoce el bucket y la tabla remota
-const BUCKET = 'geocam';
-const SIGNED_URL_SECONDS = 3600;
-
-/**
- * La primera carpeta debe ser el id del usuario: es lo que exigen las políticas RLS del bucket.
- * La ruta depende solo del clientId, así que repetir la subida reemplaza el archivo en vez de duplicarlo.
- */
-function storagePathFor(userId: string, clientId: string): string {
-  return `${userId}/${clientId}.jpg`;
-}
 
 /**
  * Sube o actualiza una foto. Se puede repetir sin duplicar nada:
@@ -38,6 +27,9 @@ export async function uploadPhoto(photo: GeoPhoto, userId: string): Promise<void
     uploadedNow = true;
   }
 
+  // La versión que se sube: markSynced la guarda como syncedAt (nunca "ahora")
+  const uploadedVersion = new Date(photo.updatedAt ?? photo.createdAt);
+
   // user_id no se envía: la columna toma auth.uid() por defecto y RLS comprueba que coincida
   const { error: rowError } = await supabase.from('photos').upsert(
     {
@@ -49,7 +41,7 @@ export async function uploadPhoto(photo: GeoPhoto, userId: string): Promise<void
       favorite: photo.favorite,
       source: photo.source,
       taken_at: new Date(photo.createdAt).toISOString(),
-      updated_at: new Date(photo.updatedAt ?? photo.createdAt).toISOString(),
+      updated_at: uploadedVersion.toISOString(),
     },
     { onConflict: 'client_id' }
   );
@@ -63,7 +55,7 @@ export async function uploadPhoto(photo: GeoPhoto, userId: string): Promise<void
     throw new Error(`No se pudo guardar la foto en la nube: ${rowError.message}`);
   }
 
-  await photosRepo.markSynced(photo.id, userId, path);
+  await photosRepo.markSynced(photo.id, userId, path, uploadedVersion);
 }
 
 export interface RemoteRef {
@@ -157,11 +149,4 @@ export function subscribeToRemoteChanges(userId: string, onChange: () => void): 
   return () => {
     supabase.removeChannel(channel);
   };
-}
-
-/** URL temporal para mostrar una foto del bucket privado. */
-export async function signedUrl(path: string): Promise<string> {
-  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, SIGNED_URL_SECONDS);
-  if (error) throw new Error(error.message);
-  return data.signedUrl;
 }

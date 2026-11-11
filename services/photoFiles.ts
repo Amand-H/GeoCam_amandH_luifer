@@ -1,4 +1,5 @@
 import { Directory, File, Paths } from 'expo-file-system';
+import { signedUrl } from '@/services/cloudStorage';
 
 // La cámara y el selector de galería entregan archivos en caché, que el sistema puede borrar.
 // Se copian a documentos para que la URI guardada en SQLite siga siendo válida.
@@ -33,6 +34,20 @@ export function photoFileExists(uri: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Semana 9: baja a documentos/photos el archivo de una foto que llegó de la nube.
+ * El nombre depende del clientId: si ya se descargó antes, se reutiliza (downloadFileAsync
+ * rechaza con DestinationAlreadyExists si el destino existe).
+ */
+export async function downloadPhotoFile(storagePath: string, clientId: string): Promise<string> {
+  if (!photosDir.exists) photosDir.create({ intermediates: true, idempotent: true });
+  const destination = new File(photosDir, `${clientId}.jpg`);
+  if (destination.exists) return destination.uri;
+  const url = await signedUrl(storagePath); // el bucket es privado
+  const file = await File.downloadFileAsync(url, destination);
+  return file.uri;
 }
 
 const CONTENT_TYPES: Record<string, string> = {

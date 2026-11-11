@@ -6,6 +6,7 @@ import m0001 from './0001_daily_inertia.sql';
 import m0002 from './0002_modern_dagger.sql';
 import m0003 from './0003_special_betty_ross.sql';
 import m0004 from './0004_round_captain_america.sql';
+import m0005 from './0005_sloppy_liz_osborn.sql';
 
   export default {
     journal,
@@ -14,7 +15,8 @@ import m0004 from './0004_round_captain_america.sql';
 m0001,
 m0002,
 m0003,
-m0004
+m0004,
+m0005
     }
   }
   

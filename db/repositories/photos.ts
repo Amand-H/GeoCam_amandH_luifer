@@ -106,12 +106,45 @@ export const photosRepo = {
       .where(ownPhoto(id, ownerId));
   },
 
-  /** Solo registra la sincronización. No toca updatedAt: si lo hiciera, la foto nunca quedaría al día. */
-  markSynced(id: number, ownerId: string, remotePath: string) {
+  /**
+   * Solo registra la sincronización. syncedAt = la versión (updatedAt) que se subió, nunca "ahora":
+   * si el usuario editó durante la subida, updatedAt > syncedAt y la foto sigue pendiente.
+   * No toca updatedAt: si lo hiciera, la foto nunca quedaría al día.
+   */
+  markSynced(id: number, ownerId: string, remotePath: string, syncedAt: Date) {
     return db
       .update(photos)
-      .set({ remotePath, syncedAt: new Date() })
+      .set({ remotePath, syncedAt })
       .where(ownPhoto(id, ownerId));
+  },
+
+  // ---------- Semana 9: bajada desde la nube ----------
+
+  /** La misma foto en este teléfono (identidad compartida), solo si es del usuario. */
+  findByClientId(clientId: string, ownerId: string) {
+    return db
+      .select()
+      .from(photos)
+      .where(and(eq(photos.clientId, clientId), ownedBy(ownerId)))
+      .get();
+  },
+
+  /** Foto que llegó de la nube: nace sincronizada (syncedAt = updatedAt remoto) y con su dueño. */
+  insertFromRemote(data: Omit<NewPhoto, 'id' | 'ownerId'>, ownerId: string) {
+    return db
+      .insert(photos)
+      .values({ ...data, ownerId })
+      .returning()
+      .get();
+  },
+
+  /** Aplica en local una versión más nueva de la nube. Nunca usa la hora actual. */
+  applyRemote(
+    id: number,
+    ownerId: string,
+    changes: { note: string | null; favorite: boolean; updatedAt: Date; syncedAt: Date }
+  ) {
+    return db.update(photos).set(changes).where(ownPhoto(id, ownerId)).run();
   },
 
   /**
