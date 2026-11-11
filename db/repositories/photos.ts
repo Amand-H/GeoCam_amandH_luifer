@@ -67,14 +67,21 @@ export const photosRepo = {
   },
 
   /**
-   * Consulta sin ejecutar para useLiveQuery: el botón Sincronizar se actualiza solo.
-   * Devuelve uri y remotePath (no un COUNT) porque saber si el archivo existe no lo puede responder SQLite.
+   * Consulta sin ejecutar para useLiveQuery: el indicador y la pantalla de sincronización se actualizan solos.
+   * Devuelve filas (no un COUNT) porque saber si el archivo existe no lo puede responder SQLite.
    */
   pendingQuery(ownerId: string) {
     return db
-      .select({ id: photos.id, uri: photos.uri, remotePath: photos.remotePath })
+      .select({
+        id: photos.id,
+        uri: photos.uri,
+        remotePath: photos.remotePath,
+        note: photos.note,
+        createdAt: photos.createdAt,
+      })
       .from(photos)
-      .where(and(ownedBy(ownerId), isPending()));
+      .where(and(ownedBy(ownerId), isPending()))
+      .orderBy(asc(photos.createdAt));
   },
 
   /** Lo necesario para borrar todo: el archivo local y, si se subió, su identidad en la nube. */

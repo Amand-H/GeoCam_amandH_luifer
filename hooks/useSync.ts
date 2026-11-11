@@ -11,6 +11,16 @@ import { canUpload, syncAll } from '@/services/sync';
 export { canUpload, isPending } from '@/services/sync';
 export type { SyncResult } from '@/services/sync';
 
+/** Foto pendiente de subir, para la pantalla de sincronización. */
+export interface PendingPhoto {
+  id: number;
+  uri: string;
+  note: string | null;
+  createdAt: number; // ms
+  /** Nunca se subió y su archivo ya no está en el teléfono: no se puede subir. */
+  sinArchivo: boolean;
+}
+
 /**
  * Pide un ciclo de sincronización después de un cambio local.
  * Sin red, la consulta queda en pausa (networkMode 'online') y se reanuda sola al reconectar.
@@ -25,11 +35,20 @@ export function useSync() {
 
   // '' al cerrar sesión: no coincide con ninguna fila (ver useOwnerId)
   const { data: pending } = useLiveQuery(photosRepo.pendingQuery(userId ?? ''), [userId]);
-  // Las pendientes sin archivo no se pueden subir: se cuentan aparte
-  const { pendingCount, sinArchivoCount } = useMemo(() => {
-    const uploadable = pending.filter(canUpload).length;
-    return { pendingCount: uploadable, sinArchivoCount: pending.length - uploadable };
-  }, [pending]);
+  // Las pendientes sin archivo no se pueden subir: se marcan y se cuentan aparte
+  const pendingPhotos: PendingPhoto[] = useMemo(
+    () =>
+      pending.map((p) => ({
+        id: p.id,
+        uri: p.uri,
+        note: p.note,
+        createdAt: p.createdAt.getTime(),
+        sinArchivo: !canUpload(p),
+      })),
+    [pending]
+  );
+  const sinArchivoCount = pendingPhotos.filter((p) => p.sinArchivo).length;
+  const pendingCount = pendingPhotos.length - sinArchivoCount;
 
   const sync = useQuery({
     queryKey: ['sync', userId],
@@ -43,6 +62,7 @@ export function useSync() {
 
   return {
     isOnline,
+    pendingPhotos,
     pendingCount,
     sinArchivoCount,
     isSyncing: sync.fetchStatus === 'fetching',

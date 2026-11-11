@@ -1,9 +1,14 @@
 import { Pressable, StyleSheet, Text } from 'react-native';
+import { useRouter } from 'expo-router';
 import { colors } from '@/constants/theme';
 import { useSync } from '@/hooks/useSync';
 
-/** Estado de la sincronización (T6), en GeoCam y Fotos. Al tocarlo se sincroniza ahora. */
+/**
+ * Estado de la sincronización (T6), en GeoCam y Fotos. Al tocarlo abre la pantalla de
+ * sincronización (C4), que tiene el botón "Sincronizar ahora".
+ */
 export function SyncStatus() {
+  const router = useRouter();
   const sync = useSync();
   const n = sync.pendingCount;
   const pendientes = `${n} ${n === 1 ? 'pendiente' : 'pendientes'}`;
@@ -23,7 +28,7 @@ export function SyncStatus() {
   } else if (sync.error) {
     icon = '⚠️';
     color = colors.danger;
-    label = 'Error al sincronizar · toca para reintentar';
+    label = 'Error al sincronizar · toca para ver';
   } else if (n > 0) {
     icon = '⬆️';
     color = colors.warning;
@@ -32,8 +37,7 @@ export function SyncStatus() {
 
   return (
     <Pressable
-      onPress={() => void sync.syncNow()}
-      disabled={!sync.isOnline || sync.isSyncing}
+      onPress={() => router.push('/sync')}
       style={({ pressed }) => [styles.badge, pressed && { opacity: 0.7 }]}
       hitSlop={8}
       accessibilityRole="button"
