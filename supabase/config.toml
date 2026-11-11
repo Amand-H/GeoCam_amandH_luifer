@@ -1,0 +1,4 @@
+project_id = "geocam"
+
+[functions.tutor]
+verify_jwt = true
