@@ -6,10 +6,10 @@ import { AlbumNameModal } from '@/components/AlbumNameModal';
 import { Chip } from '@/components/Chip';
 import { PhotoImage } from '@/components/PhotoImage';
 import { SyncBadge } from '@/components/SyncBadge';
+import { SyncStatus } from '@/components/SyncStatus';
 import { colors } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { useAlbums } from '@/hooks/useAlbums';
-import { useCloudSync } from '@/hooks/useCloudSync';
 import { useDevTools } from '@/hooks/useDevTools';
 import { usePhotos } from '@/hooks/usePhotos';
 import type { Album, AlbumFilter, GeoPhoto } from '@/types/geo';
@@ -34,17 +34,6 @@ export default function FotosScreen() {
   const { albums, createAlbum, renameAlbum, removeAlbum } = useAlbums();
   const devTools = useDevTools();
   const { email, signOut } = useAuth();
-  const { syncPending, pendingCount, isUploading } = useCloudSync();
-
-  const handleSync = async () => {
-    const { ok, failed, missingFile, errors } = await syncPending();
-    let summary = `Se subieron ${ok}. Quedaron ${failed} pendientes.`;
-    if (missingFile > 0) summary += ` ${missingFile} sin archivo (no se pueden subir).`;
-    Alert.alert('Sincronización', errors[0] ? `${summary}\n\nPrimer error: ${errors[0]}` : summary);
-  };
-
-  const syncLabel = isUploading ? 'Sincronizando…' : `☁️ Sincronizar (${pendingCount})`;
-  const syncDisabled = pendingCount === 0 || isUploading;
 
   // Al cerrar la sesión, Stack.Protected lleva al login solo (sin router.replace)
   const confirmSignOut = () => {
@@ -121,14 +110,6 @@ export default function FotosScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>Fotos</Text>
         <View style={styles.headerActions}>
-          <Pressable
-            onPress={handleSync}
-            disabled={syncDisabled}
-            style={[styles.syncButton, syncDisabled && { opacity: 0.4 }]}
-            hitSlop={8}
-          >
-            <Text style={styles.syncText}>{syncLabel}</Text>
-          </Pressable>
           {/* Herramientas de rendimiento: solo existen en desarrollo */}
           {__DEV__ && (
             <Pressable onPress={devTools.openMenu} style={styles.devButton} hitSlop={8}>
@@ -142,6 +123,10 @@ export default function FotosScreen() {
           Cerrar sesión ({email})
         </Text>
       </Pressable>
+      {/* Semana 9: reemplaza al botón "Sincronizar (N)"; la subida ahora es automática */}
+      <View style={styles.syncStatus}>
+        <SyncStatus />
+      </View>
       <TextInput
         value={search}
         onChangeText={setSearch}
@@ -216,8 +201,7 @@ const styles = StyleSheet.create({
   },
   title: { color: colors.text, fontSize: 28, fontWeight: '800' },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  syncButton: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.accent },
-  syncText: { color: '#0a0a0a', fontSize: 12, fontWeight: '700' },
+  syncStatus: { paddingHorizontal: 16, marginTop: -4, marginBottom: 12 },
   signOut: { alignSelf: 'flex-start', marginHorizontal: 16, marginTop: -6, marginBottom: 12 },
   signOutText: { color: colors.danger, fontSize: 12, fontWeight: '600' },
   devButton: {

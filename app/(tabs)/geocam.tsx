@@ -9,6 +9,7 @@ import { useShake } from '@/hooks/useShake';
 import { PermissionPrimer } from '@/components/PermissionPrimer';
 import { PhotoImage } from '@/components/PhotoImage';
 import { StatusBanner } from '@/components/StatusBanner';
+import { SyncStatus } from '@/components/SyncStatus';
 import { usePhotos } from '@/hooks/usePhotos';
 import { colors } from '@/constants/theme';
 import { confirmClearAll, pickImageFromGallery } from '@/lib/photos';
@@ -98,6 +99,8 @@ export default function GeoCamScreen() {
       )}
 
       <View style={[styles.top, { top: insets.top + 12 }]}>
+        {/* Semana 9: estado de la sincronización (toca para sincronizar ya) */}
+        <SyncStatus />
         {/* Banner de ubicación: pedir en contexto sin bloquear la cámara */}
         {(geo.permission === 'undetermined' || geo.permission === 'denied') && (
           <StatusBanner

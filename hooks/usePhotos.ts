@@ -4,6 +4,7 @@ import { photosRepo } from '@/db/repositories/photos';
 import type { Photo } from '@/db/schema';
 import { useAlbumsVersion } from '@/hooks/useAlbumsVersion';
 import { useOwnerId } from '@/hooks/useOwnerId';
+import { requestSync } from '@/hooks/useSync';
 import { deleteRemote, deleteRemoteMany } from '@/services/cloudPhotos';
 import { isOnline } from '@/services/network';
 import { deletePhotoFile, persistPhoto } from '@/services/photoFiles';
@@ -98,6 +99,8 @@ export function usePhotos({ search = '', albumId = null, onlyFavorites = false }
       deletePhotoFile(permanentUri);
       throw e;
     }
+    // La foto ya está en SQLite (fuente de verdad); la nube se entera cuando haya red
+    requestSync();
   }, [ownerId]);
 
   const removePhoto = useCallback((id: number) => removePhotoById(id, ownerId), [ownerId]);
