@@ -1,62 +1,9 @@
-import { photosRepo } from '@/db/repositories/photos';
 import { supabase } from '@/lib/supabase';
-import { BUCKET, SIGNED_URL_SECONDS, storagePathFor } from '@/services/cloudStorage';
-import { readPhotoBytes } from '@/services/photoFiles';
-import type { CloudPhoto, GeoPhoto } from '@/types/geo';
+import { BUCKET, SIGNED_URL_SECONDS } from '@/services/cloudStorage';
+import type { CloudPhoto } from '@/types/geo';
 
-/**
- * Sube o actualiza una foto. Se puede repetir sin duplicar nada:
- * 1. El archivo solo se sube si la foto nunca llegó al bucket (upsert sobre una ruta fija).
- * 2. La fila se escribe con upsert por client_id: una foto editada actualiza su fila.
- * 3. Si la fila falla y el archivo se subió en este intento, se borra para no dejar huérfanos.
- * 4. markSynced solo al final, cuando todo salió bien.
- */
-export async function uploadPhoto(photo: GeoPhoto, userId: string): Promise<void> {
-  if (!photo.clientId) throw new Error('La foto aún no tiene identificador de sincronización');
-
-  let path = photo.remotePath;
-  let uploadedNow = false;
-
-  if (!path) {
-    path = storagePathFor(userId, photo.clientId);
-    const { bytes, contentType } = await readPhotoBytes(photo.uri);
-    const { error: uploadError } = await supabase.storage
-      .from(BUCKET)
-      .upload(path, bytes, { contentType, upsert: true });
-    if (uploadError) throw new Error(`No se pudo subir el archivo: ${uploadError.message}`);
-    uploadedNow = true;
-  }
-
-  // La versión que se sube: markSynced la guarda como syncedAt (nunca "ahora")
-  const uploadedVersion = new Date(photo.updatedAt ?? photo.createdAt);
-
-  // user_id no se envía: la columna toma auth.uid() por defecto y RLS comprueba que coincida
-  const { error: rowError } = await supabase.from('photos').upsert(
-    {
-      client_id: photo.clientId,
-      storage_path: path,
-      latitude: photo.coords?.latitude ?? null,
-      longitude: photo.coords?.longitude ?? null,
-      note: photo.note,
-      favorite: photo.favorite,
-      source: photo.source,
-      taken_at: new Date(photo.createdAt).toISOString(),
-      updated_at: uploadedVersion.toISOString(),
-    },
-    { onConflict: 'client_id' }
-  );
-
-  if (rowError) {
-    if (uploadedNow) {
-      // Compensación: sin fila, el archivo quedaría huérfano en el bucket
-      const { error: removeError } = await supabase.storage.from(BUCKET).remove([path]);
-      if (removeError && __DEV__) console.warn('[cloud] no se pudo borrar el archivo huérfano', path, removeError);
-    }
-    throw new Error(`No se pudo guardar la foto en la nube: ${rowError.message}`);
-  }
-
-  await photosRepo.markSynced(photo.id, userId, path, uploadedVersion);
-}
+// La subida vive en services/sync.ts (Semana 9). Aquí queda lo que todavía usan otras pantallas:
+// el borrado físico (hasta la Fase 7, borrado lógico) y la lista/realtime de la pestaña Nube (hasta la Fase 8).
 
 export interface RemoteRef {
   clientId: string | null;

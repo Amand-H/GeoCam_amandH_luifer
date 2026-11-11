@@ -2,9 +2,11 @@ import { useCallback, useMemo, useState } from 'react';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { useAuth } from '@/context/AuthContext';
 import { photosRepo } from '@/db/repositories/photos';
-import { toGeoPhoto } from '@/hooks/usePhotos';
-import { uploadPhoto } from '@/services/cloudPhotos';
-import { diagnosePhotoFile, photoFileExists } from '@/services/photoFiles';
+import { canUpload, syncAll } from '@/services/sync';
+
+// Provisional (Semana 9, Fase 4): ya no tiene su propia subida, todo pasa por syncAll().
+// La Fase 5 lo reemplaza por useSync + indicador de estado.
+export { canUpload };
 
 export interface SyncResult {
   ok: number;
@@ -14,23 +16,14 @@ export interface SyncResult {
   errors: string[];
 }
 
-/**
- * Sin archivo local solo importa si la foto aún no está en el bucket.
- * Una foto ya subida que perdió el archivo puede seguir actualizando su metadata.
- */
-export function canUpload(photo: { uri: string; remotePath: string | null }): boolean {
-  return photo.remotePath !== null || photoFileExists(photo.uri);
-}
-
 function messageOf(e: unknown, fallback: string): string {
   return e instanceof Error ? e.message : fallback;
 }
 
-/** Subidas a la nube para las pantallas. */
+/** Sincronización a pedido para las pantallas (botón Sincronizar y "Subir" del detalle). */
 export function useCloudSync() {
   const { userId } = useAuth();
   const [isUploading, setIsUploading] = useState(false);
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
   // '' al cerrar sesión: no coincide con ninguna fila (ver useOwnerId)
   const { data } = useLiveQuery(photosRepo.pendingQuery(userId ?? ''), [userId]);
@@ -39,61 +32,29 @@ export function useCloudSync() {
     const uploadable = data.filter(canUpload).length;
     return { pendingCount: uploadable, missingFileCount: data.length - uploadable };
   }, [data]);
-  const isSyncing = progress !== null;
 
-  /** Sube una foto. Devuelve null si salió bien o el mensaje de error. */
-  const uploadOne = useCallback(
-    async (id: number): Promise<string | null> => {
-      if (!userId) return 'Inicia sesión para subir fotos';
-      const row = photosRepo.detailQuery(id, userId).get();
-      if (!row) return 'Esta foto ya no existe';
-      setIsUploading(true);
-      try {
-        await uploadPhoto(toGeoPhoto(row), userId);
-        return null;
-      } catch (e) {
-        return messageOf(e, 'No se pudo subir la foto');
-      } finally {
-        setIsUploading(false);
-      }
-    },
-    [userId]
-  );
-
-  /**
-   * Sube las pendientes una por una (no Promise.all: una conexión móvil lenta se satura
-   * y el progreso dejaría de tener sentido). Si una falla, se anota y se sigue con las demás.
-   */
+  /** Un ciclo completo bajar → subir. */
   const syncPending = useCallback(async (): Promise<SyncResult> => {
     if (!userId) return { ok: 0, failed: 0, missingFile: 0, errors: ['Inicia sesión para subir fotos'] };
-    const all = photosRepo.pendingForUpload(userId);
-    const pending = all.filter(canUpload);
-    const result: SyncResult = { ok: 0, failed: 0, missingFile: all.length - pending.length, errors: [] };
-    setProgress({ done: 0, total: pending.length });
+    setIsUploading(true);
     try {
-      for (const [index, row] of pending.entries()) {
-        try {
-          await uploadPhoto(toGeoPhoto(row), userId);
-          result.ok++;
-        } catch (e) {
-          result.failed++;
-          result.errors.push(messageOf(e, 'No se pudo subir la foto'));
-          if (__DEV__) console.log('[sync] falló la foto', row.id, await diagnosePhotoFile(row.uri));
-        }
-        setProgress({ done: index + 1, total: pending.length });
-      }
+      const r = await syncAll(userId);
+      return { ok: r.pushed, failed: r.failed, missingFile: r.sinArchivo, errors: r.errors };
+    } catch (e) {
+      return { ok: 0, failed: 0, missingFile: 0, errors: [messageOf(e, 'No se pudo sincronizar')] };
     } finally {
-      setProgress(null);
+      setIsUploading(false);
     }
-    return result;
   }, [userId]);
 
-  return {
-    uploadOne,
-    syncPending,
-    pendingCount,
-    missingFileCount,
-    progress,
-    isUploading: isUploading || isSyncing,
-  };
+  /** "Subir" desde el detalle: lanza el mismo ciclo. Devuelve null si salió bien o el primer error. */
+  const uploadOne = useCallback(
+    async (_id: number): Promise<string | null> => {
+      const { errors } = await syncPending();
+      return errors[0] ?? null;
+    },
+    [syncPending]
+  );
+
+  return { uploadOne, syncPending, pendingCount, missingFileCount, isUploading };
 }

@@ -34,7 +34,7 @@ export default function FotosScreen() {
   const { albums, createAlbum, renameAlbum, removeAlbum } = useAlbums();
   const devTools = useDevTools();
   const { email, signOut } = useAuth();
-  const { syncPending, pendingCount, progress, isUploading } = useCloudSync();
+  const { syncPending, pendingCount, isUploading } = useCloudSync();
 
   const handleSync = async () => {
     const { ok, failed, missingFile, errors } = await syncPending();
@@ -43,10 +43,7 @@ export default function FotosScreen() {
     Alert.alert('Sincronización', errors[0] ? `${summary}\n\nPrimer error: ${errors[0]}` : summary);
   };
 
-  // "Subiendo 3 de 7…": la foto que se está subiendo ahora, no las ya terminadas
-  const syncLabel = progress
-    ? `Subiendo ${Math.min(progress.done + 1, progress.total)} de ${progress.total}…`
-    : `☁️ Sincronizar (${pendingCount})`;
+  const syncLabel = isUploading ? 'Sincronizando…' : `☁️ Sincronizar (${pendingCount})`;
   const syncDisabled = pendingCount === 0 || isUploading;
 
   // Al cerrar la sesión, Stack.Protected lleva al login solo (sin router.replace)
